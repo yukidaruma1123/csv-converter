@@ -9,9 +9,7 @@ Amazon・楽天・Yahoo のデータをヤマト運輸用CSVに変換するWeb�
 - 住所統合: 同一配送先の注文を自動的にまとめて処理
 - ヤマト運輸形式出力: 送り状システムに直接インポート可能
 
-## デモ
-
-公開URL: https://your-app.onrender.com
+公開URL: https://csv-converter-nt6p.onrender.com/
 
 
 ## 使用方法
@@ -33,15 +31,6 @@ Amazon・楽天・Yahoo のデータをヤマト運輸用CSVに変換するWeb�
 - フロントエンド: HTML5, CSS3, JavaScript
 - ライブラリ: PapaParse(CSV解析), SheetJS(Excel読み込み)
 - 対応ブラウザ: Chrome, Firefox, Safari, Edge(最新版)
-
-
-## ローカル実行
-
-bashgit clone https://github.com/username/csv-converter.git
-cd csv-converter
-python -m http.server 8000
-
-ブラウザで http://localhost:8000 にアクセス
 
 
 ## プロジェクト構成
