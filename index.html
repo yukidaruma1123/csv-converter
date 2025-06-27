@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSV統合変換システム Ver.12 - ヤマト運輸データ作成</title>
+    <title>CSV統合変換システム - ヤマト運輸データ作成</title>
     <meta name="description" content="Amazon・楽天・Yahoo のCSVデータをヤマト運輸用CSVに変換するWebアプリケーション">
     <style>
         * {
@@ -46,17 +46,6 @@
         .header p {
             color: #718096;
             font-size: 16px;
-        }
-
-        .version-badge {
-            display: inline-block;
-            background: #007bff;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 8px;
         }
 
         .upload-section {
@@ -276,24 +265,6 @@
         .required-label {
             color: #e53e3e;
         }
-
-        .new-features {
-            background: #e8f5e8;
-            border: 1px solid #c3e6c3;
-            border-radius: 6px;
-            padding: 16px;
-            margin-top: 20px;
-        }
-
-        .new-features h3 {
-            color: #2d5a2d;
-            margin-bottom: 8px;
-            font-size: 16px;
-        }
-
-        .new-features ul {
-            color: #2d5a2d;
-        }
     </style>
 </head>
 <body>
@@ -301,7 +272,6 @@
         <div class="header">
             <h1>CSV統合変換システム</h1>
             <p>Amazon・楽天・Yahoo のデータをヤマト運輸用に変換</p>
-            <div class="version-badge">Version 12</div>
         </div>
 
         <div class="upload-section">
@@ -351,18 +321,6 @@
             </button>
         </div>
 
-        <div class="new-features">
-            <h3>🆕 Version 12 新機能</h3>
-            <ul>
-                <li><strong>楽天SKU情報対応</strong>：SKU情報から色と重量を自動判定</li>
-                <li><strong>Yahoo SubCode対応</strong>：SubCodeから商品情報を取得</li>
-                <li><strong>1kg超過自動分類</strong>：重量1kg超過商品はZ種別で下段表示</li>
-                <li><strong>色名一文字表示</strong>：赤色→赤、緑色→緑に自動変換</li>
-                <li><strong>商品名25文字制限</strong>：超過分は品名詳細欄に自動記載</li>
-                <li><strong>送り状種別変更</strong>：A種別（従来7）、1kg超過はZ種別</li>
-            </ul>
-        </div>
-
         <div class="info-section">
             <div class="info-title">使用方法</div>
             <ul class="info-list">
@@ -372,9 +330,8 @@
                 <li>4. 変換完了後、ヤマト運輸用CSVをダウンロード</li>
                 <li>※ ファイル形式：Amazon(TSV)、楽天・Yahoo(CSV)</li>
                 <li>※ 同一配送先は自動統合されます</li>
-                <li>※ 楽天のSKU情報・YahooのSubCodeから色と重量を自動判定</li>
-                <li>※ 1kg超過商品は自動でZ種別に分類し下段に表示</li>
-                <li>※ 色名は一文字表示（赤色→赤、緑色→緑）</li>
+                <li>※ 重量は商品マスタから自動計算されます</li>
+                <li>※ カラーオモリ対応表を自動読み込みします</li>
             </ul>
         </div>
     </div>
@@ -384,7 +341,7 @@
     <script>
         // グローバル変数
         let productMaster = {};
-        let colorMaster = {}; // カラーマスタ用（楽天SKU情報・Yahoo SubCode対応）
+        let colorWeightTable = {}; // カラーオモリ対応表
         let selectedFiles = {
             master: null,
             amazon: null,
@@ -405,6 +362,99 @@
         const messageArea = document.getElementById('messageArea');
         const downloadButton = document.getElementById('downloadButton');
         const resetButton = document.getElementById('resetButton');
+
+        // カラーオモリ対応表を自動読み込み
+        async function loadColorWeightTable() {
+            try {
+                console.log('Loading color weight table...');
+                const response = await fetch('./カラーオモリ対応表.xlsx');
+                if (!response.ok) {
+                    throw new Error(`カラーオモリ対応表の読み込みに失敗しました: ${response.status}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                
+                console.log('Color weight table sheets:', workbook.SheetNames);
+                
+                // 最初のシートを使用
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { 
+                    header: 1,
+                    defval: '',
+                    blankrows: false
+                });
+                
+                console.log('Color weight table rows:', jsonData.length);
+                console.log('Headers:', jsonData[0]);
+                
+                // カラーオモリ対応表オブジェクトを構築
+                // A列: 空、B列: Yahoo表記、C列: 楽天表記、D列: 色、E列: 重さ
+                colorWeightTable = {
+                    byYahoo: {},  // B列(Yahoo表記)でのマッピング
+                    byRakuten: {}, // C列(楽天表記)でのマッピング
+                    byColor: {}    // D列(色)でのマッピング（従来互換用）
+                };
+                let loadedCount = 0;
+                
+                for (let i = 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (row.length >= 5) {
+                        const yahooCode = String(row[1] || '').trim();     // B列: Yahoo表記
+                        const rakutenCode = String(row[2] || '').trim();   // C列: 楽天表記
+                        const colorName = String(row[3] || '').trim();     // D列: 色
+                        const weightStr = String(row[4] || '').trim();     // E列: 重さ("60g", "80g"形式)
+                        
+                        // 重さから数値を抽出
+                        const weightMatch = weightStr.match(/(\d+)/);
+                        const weight = weightMatch ? parseFloat(weightMatch[1]) : 0;
+                        
+                        if (weight > 0) {
+                            // 色を一文字に変換
+                            let shortColor = colorName;
+                            if (colorName.endsWith('色')) {
+                                shortColor = colorName.slice(0, -1); // 最後の「色」を除去
+                            }
+                            
+                            // Yahoo表記でのマッピング（B列）
+                            if (yahooCode) {
+                                colorWeightTable.byYahoo[yahooCode] = {
+                                    color: shortColor,
+                                    weight: weight
+                                };
+                                console.log(`Yahoo mapping: ${yahooCode} -> ${shortColor}: ${weight}g`);
+                            }
+                            
+                            // 楽天表記でのマッピング（C列）
+                            if (rakutenCode) {
+                                colorWeightTable.byRakuten[rakutenCode] = {
+                                    color: shortColor,
+                                    weight: weight
+                                };
+                                console.log(`Rakuten mapping: ${rakutenCode} -> ${shortColor}: ${weight}g`);
+                            }
+                            
+                            // カラー名でのマッピング（D列・従来互換用）
+                            if (colorName) {
+                                colorWeightTable.byColor[colorName] = weight;
+                            }
+                            
+                            loadedCount++;
+                        }
+                    }
+                }
+                
+                console.log(`Color weight table loaded: ${loadedCount} colors`);
+                console.log('Yahoo codes:', Object.keys(colorWeightTable.byYahoo));
+                console.log('Rakuten codes:', Object.keys(colorWeightTable.byRakuten));
+                return true;
+                
+            } catch (error) {
+                console.error('カラーオモリ対応表読み込みエラー:', error);
+                // エラーでも処理を継続（対応表なしでも動作するため）
+                return false;
+            }
+        }
 
         // ファイル選択イベント
         masterFile.addEventListener('change', (e) => handleFileSelect(e, 'master', 'masterStatus'));
@@ -439,7 +489,6 @@
                 
                 if (type === 'master') {
                     productMaster = {};
-                    colorMaster = {};
                 }
             }
 
@@ -454,9 +503,268 @@
                 
                 console.log('Workbook sheets:', workbook.SheetNames);
                 
-                // メインの商品マスタシートを探す（従来通り）
                 let masterSheet = null;
+                // 商品マスタシートを探す
                 for (const sheetName of workbook.SheetNames) {
+                    if (sheetName.includes('商品マスタ') || sheetName.includes('master') || sheetName.includes('Master')) {
+                        masterSheet = workbook.Sheets[sheetName];
+                        console.log('Found master sheet:', sheetName);
+                        break;
+                    }
+                }
+                
+                // 見つからない場合は最初のシートを使用
+                if (!masterSheet && workbook.SheetNames.length > 0) {
+                    masterSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    console.log('Using first sheet:', workbook.SheetNames[0]);
+                }
+                
+                if (!masterSheet) {
+                    throw new Error('商品マスタシートが見つかりません');
+                }
+                
+                // シートをJSONに変換
+                const jsonData = XLSX.utils.sheet_to_json(masterSheet, { 
+                    header: 1,
+                    defval: '',
+                    blankrows: false
+                });
+                
+                console.log('Master data rows:', jsonData.length);
+                console.log('Headers:', jsonData[0]);
+                
+                // 商品マスタオブジェクトを構築（複数カラムセット対応）
+                productMaster = {};
+                let loadedCount = 0;
+                
+                for (let i = 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (row.length >= 3 && row[0] && row[2] && row[0] !== 'FBA') { // 販売サイト、商品No最低限必要、FBA除外
+                        const site = String(row[0]).trim();
+                        const detail = String(row[1] || '').trim();
+                        const productNo = String(row[2]).trim();
+                        
+                        // 複数カラムセットを処理（D-F, G-I, J-L, M-O, P-R）
+                        const colorSets = [];
+                        const columnGroups = [
+                            [3, 4, 5],   // D, E, F
+                            [6, 7, 8],   // G, H, I  
+                            [9, 10, 11], // J, K, L
+                            [12, 13, 14], // M, N, O
+                            [15, 16, 17]  // P, Q, R
+                        ];
+                        
+                        columnGroups.forEach(([weightCol, quantityCol, colorCol]) => {
+                            let weight = parseFloat(row[weightCol]) || 0;
+                            const quantity = parseInt(row[quantityCol]) || 0;
+                            const color = String(row[colorCol] || '').trim();
+                            
+                            // カラーオモリ対応表から重量を取得（優先）
+                            if (color && colorWeightTable.byColor && colorWeightTable.byColor[color]) {
+                                weight = colorWeightTable.byColor[color];
+                                console.log(`Using color weight table: ${color} = ${weight}g`);
+                            }
+                            
+                            if (weight > 0 && quantity > 0 && color) {
+                                colorSets.push({
+                                    weight: weight,
+                                    quantity: quantity,
+                                    color: color
+                                });
+                            }
+                        });
+                        
+                        // 少なくとも1つのカラーセットがある場合のみ登録
+                        if (colorSets.length > 0) {
+                            productMaster[productNo] = {
+                                site: site,
+                                detail: detail,
+                                colorSets: colorSets
+                            };
+                            loadedCount++;
+                        }
+                    }
+                }
+                
+                console.log(`Product master loaded: ${loadedCount} products`);
+                
+                // ステータスを更新
+                const masterStatus = document.getElementById('masterStatus');
+                masterStatus.textContent = `✅ 商品マスタ読み込み完了: ${loadedCount}件`;
+                masterStatus.className = 'file-status success';
+                
+            } catch (error) {
+                console.error('商品マスタ読み込みエラー:', error);
+                const masterStatus = document.getElementById('masterStatus');
+                masterStatus.textContent = `❌ 読み込みエラー: ${error.message}`;
+                masterStatus.className = 'file-status';
+                masterStatus.style.color = '#e53e3e';
+                productMaster = {};
+            }
+        }
+
+        function updateConvertButton() {
+            // 商品マスタは必須、他のファイルは少なくとも1つは必要
+            const hasMaster = selectedFiles.master && Object.keys(productMaster).length > 0;
+            const hasData = selectedFiles.amazon || selectedFiles.rakuten || selectedFiles.yahoo;
+            
+            convertButton.disabled = !hasMaster || !hasData;
+            
+            console.log('Button update:', { hasMaster, hasData, disabled: convertButton.disabled });
+        }
+
+        // 変換処理
+        convertButton.addEventListener('click', async () => {
+            try {
+                showProgress();
+                updateProgress(10, 'ファイルを読み込み中...');
+
+                const results = [];
+                
+                // Amazonデータ処理
+                if (selectedFiles.amazon) {
+                    updateProgress(25, 'Amazonデータを解析中...');
+                    const amazonData = await readFileWithEncoding(selectedFiles.amazon);
+                    const amazonOrders = await processAmazonData(amazonData);
+                    results.push(...amazonOrders);
+                }
+
+                // 楽天データ処理
+                if (selectedFiles.rakuten) {
+                    updateProgress(45, '楽天データを解析中...');
+                    const rakutenData = await readFileWithEncoding(selectedFiles.rakuten);
+                    const rakutenOrders = await processRakutenData(rakutenData);
+                    results.push(...rakutenOrders);
+                }
+
+                // Yahooデータ処理
+                if (selectedFiles.yahoo) {
+                    updateProgress(65, 'Yahooデータを解析中...');
+                    const yahooData = await readFileWithEncoding(selectedFiles.yahoo);
+                    const yahooOrders = await processYahooData(yahooData);
+                    results.push(...yahooOrders);
+                }
+
+                // データ統合
+                updateProgress(80, 'データを統合中...');
+                const mergedOrders = mergeOrdersByRecipient(results);
+                
+                updateProgress(90, 'CSV生成中...');
+                const csvContent = generateYamatoCSV(mergedOrders);
+                
+                updateProgress(100, '変換完了!');
+                
+                setTimeout(() => {
+                    // 重量別の統計を計算
+                    const lightOrders = mergedOrders.filter(order => order.weight <= 1000);
+                    const heavyOrders = mergedOrders.filter(order => order.weight > 1000);
+                    
+                    showResult(csvContent, {
+                        original: results.length,
+                        merged: mergedOrders.length,
+                        amazon: results.filter(r => r.source === 'Amazon').length,
+                        rakuten: results.filter(r => r.source === '楽天').length,
+                        yahoo: results.filter(r => r.source === 'Yahoo').length,
+                        lightOrders: lightOrders.length,
+                        heavyOrders: heavyOrders.length,
+                        unknownProducts: []
+                    });
+                }, 500);
+
+            } catch (error) {
+                console.error('変換エラー:', error);
+                showError(error.message);
+            }
+        });
+
+        async function readFileWithEncoding(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const buffer = new Uint8Array(e.target.result);
+                        
+                        // ファイル名で判定してエンコーディングを選択
+                        let result;
+                        if (file.name.includes('楽天') || file.name.includes('rakuten')) {
+                            // 楽天データはShift-JISを優先
+                            try {
+                                result = new TextDecoder('shift-jis', { fatal: false }).decode(buffer);
+                                console.log('Used Shift-JIS encoding for Rakuten data');
+                            } catch {
+                                // Shift-JISでダメならUTF-8を試行
+                                result = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+                                console.log('Fallback to UTF-8 for Rakuten data');
+                            }
+                        } else {
+                            // その他のファイルはUTF-8を優先
+                            try {
+                                result = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+                                console.log('Used UTF-8 encoding');
+                            } catch {
+                                // UTF-8でダメならShift-JISを試行
+                                try {
+                                    result = new TextDecoder('shift-jis', { fatal: false }).decode(buffer);
+                                    console.log('Fallback to Shift-JIS');
+                                } catch {
+                                    // 最後の手段：非厳密なUTF-8
+                                    result = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+                                    console.log('Used non-strict UTF-8 as last resort');
+                                }
+                            }
+                        }
+                        
+                        resolve(result);
+                        
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        async function processAmazonData(amazonData) {
+            const orders = [];
+            const lines = amazonData.split('\n').filter(line => line.trim());
+            
+            if (lines.length <= 1) return orders;
+            
+            const headers = lines[0].split('\t');
+            console.log('Amazon headers count:', headers.length);
+            
+            for (let i = 1; i < lines.length; i++) {
+                const fields = lines[i].split('\t');
+                if (fields.length < 20) continue; // 最低限のフィールド数チェック
+                
+                try {
+                    const sku = fields[11]?.trim();
+                    const productName = fields[13]?.trim();
+                    const quantity = parseInt(fields[14]) || 1;
+                    const recipientName = fields[19]?.trim();
+                    
+                    // Amazon住所の完全な結合: ship-state + ship-address-1 + ship-address-2 + ship-address-3
+                    const shipState = fields[24]?.trim() || '';
+                    const shipAddress1 = fields[20]?.trim() || '';
+                    const shipAddress2 = fields[21]?.trim() || '';
+                    const shipAddress3 = fields[22]?.trim() || '';
+                    const shipAddress = [shipState, shipAddress1, shipAddress2, shipAddress3]
+                        .filter(addr => addr && addr.trim())
+                        .join('');
+                    
+                    const zipCode = fields[25]?.trim();
+                    const phoneNumber = fields[10]?.trim();
+                    const orderId = fields[0]?.trim();
+                    const orderItemId = fields[1]?.trim();
+
+                    if (!recipientName || !shipAddress || !zipCode || !phoneNumber) continue;
+
+                    // 商品マスタから重量情報取得（複数カラーセット対応）
+                    const masterInfo = productMaster[sku];
+                    let weight = 50 * quantity; // デフォルト重量×注文数
+                    let productDetail = productName;
+
                     if (masterInfo && masterInfo.colorSets) {
                         // 総重量計算: 各カラーセットの(重さ×個数)を合計してから注文数を掛ける
                         let unitTotalWeight = 0;
@@ -464,26 +772,11 @@
                         
                         masterInfo.colorSets.forEach(set => {
                             unitTotalWeight += set.weight * set.quantity;
-                            // 一文字色表示に変換
-                            let shortColor = set.color;
-                            if (set.color.includes('赤')) shortColor = '赤';
-                            else if (set.color.includes('緑')) shortColor = '緑';
-                            else if (set.color.includes('青')) shortColor = '青';
-                            else if (set.color.includes('黄')) shortColor = '黄';
-                            else if (set.color.includes('桃') || set.color.includes('ピンク')) shortColor = '桃';
-                            else if (set.color.includes('虹')) shortColor = '虹';
-                            else if (set.color.includes('混')) shortColor = '混';
-                            else if (set.color.includes('白')) shortColor = '白';
-                            else if (set.color.includes('黒')) shortColor = '黒';
-                            else if (set.color.includes('紫')) shortColor = '紫';
-                            else if (set.color.includes('橙') || set.color.includes('オレンジ')) shortColor = '橙';
-                            else if (set.color.length > 0) shortColor = set.color.charAt(0);
-                            
-                            detailParts.push(`${shortColor}${set.weight}g`);
+                            detailParts.push(`${set.color}: ${set.weight}g×${set.quantity}`);
                         });
                         
                         weight = unitTotalWeight * quantity;
-                        productDetail = detailParts.join('');
+                        productDetail = detailParts.join(', ');
                     } else {
                         // 商品名から重量を推定
                         const weightMatch = productName?.match(/(\d+)g/);
@@ -532,7 +825,7 @@
                     const itemId = row['商品管理番号']?.trim();
                     const itemName = row['商品名']?.trim();
                     const quantity = parseInt(row['個数']) || 1;
-                    const skuInfo = row['SKU情報']?.trim(); // SKU情報を取得
+                    const skuInfo = row['SKU情報']?.trim() || ''; // FB列のSKU情報
                     
                     const shipLastName = row['送付先姓']?.trim() || '';
                     const shipFirstName = row['送付先名']?.trim() || '';
@@ -563,53 +856,72 @@
 
                     if (!shipName || !fullAddress || !zipCode || !phoneNumber || !orderId) return;
 
-                    // SKU情報または商品管理番号から重量・色情報を取得
+                    // 重量計算の新しいロジック
                     let weight = 50 * quantity; // デフォルト重量×注文数
-                    let productDetail = '';
-                    let colorInfo = '';
+                    let productDetail = itemName;
 
-                    // SKU情報から色と重さを取得（例: "カラー:ピンク縞80g"）
-                    if (skuInfo && colorMaster[skuInfo]) {
-                        const masterInfo = colorMaster[skuInfo];
-                        weight = masterInfo.weight * quantity;
-                        colorInfo = masterInfo.shortColor; // 一文字表示用
-                        productDetail = `${colorInfo}${masterInfo.weight}g`;
-                    } else if (productMaster[itemId]) {
-                        // 従来の商品管理番号での検索
+                    // 1. まずSKU情報（FB列）からカラーオモリ対応表を検索
+                    if (skuInfo && colorWeightTable.byRakuten) {
+                        // SKU情報から"カラー:"プレフィックスを除去
+                        let cleanSKU = skuInfo;
+                        if (skuInfo.startsWith('カラー:')) {
+                            cleanSKU = skuInfo.substring(4); // "カラー:"を除去（4文字）
+                        }
+                        
+                        console.log(`Rakuten SKU processing: "${skuInfo}" -> "${cleanSKU}"`);
+                        
+                        if (colorWeightTable.byRakuten[cleanSKU]) {
+                            const colorInfo = colorWeightTable.byRakuten[cleanSKU];
+                            weight = colorInfo.weight * quantity;
+                            productDetail = `${colorInfo.color}: ${colorInfo.weight}g×${quantity}`;
+                            console.log(`Rakuten SKU match: ${cleanSKU} -> ${colorInfo.color}: ${colorInfo.weight}g`);
+                        } else {
+                            console.log(`Rakuten SKU not found in table: "${cleanSKU}"`);
+                            // SKU情報があるが対応表にない場合は従来の処理へ
+                            const masterInfo = productMaster[itemId];
+                            if (masterInfo && masterInfo.colorSets) {
+                                // 複数カラーセット対応
+                                let unitTotalWeight = 0;
+                                const detailParts = [];
+                                
+                                masterInfo.colorSets.forEach(set => {
+                                    unitTotalWeight += set.weight * set.quantity;
+                                    detailParts.push(`${set.color}: ${set.weight}g×${set.quantity}`);
+                                });
+                                
+                                weight = unitTotalWeight * quantity;
+                                productDetail = detailParts.join(', ');
+                            } else {
+                                // 商品名から重量推定（最後の手段）
+                                const weightMatch = itemName?.match(/(\d+)g/);
+                                if (weightMatch) {
+                                    weight = parseInt(weightMatch[1]) * quantity;
+                                }
+                            }
+                        }
+                    }
+                    // 2. SKU情報がない場合、従来通り商品管理番号で商品マスタを確認
+                    else {
+                        console.log(`No Rakuten SKU info, using itemId: ${itemId}`);
                         const masterInfo = productMaster[itemId];
-                        if (masterInfo.colorSets) {
+                        if (masterInfo && masterInfo.colorSets) {
+                            // 複数カラーセット対応
                             let unitTotalWeight = 0;
                             const detailParts = [];
                             
                             masterInfo.colorSets.forEach(set => {
                                 unitTotalWeight += set.weight * set.quantity;
-                                // 一文字色表示に変換
-                                let shortColor = set.color;
-                                if (set.color.includes('赤')) shortColor = '赤';
-                                else if (set.color.includes('緑')) shortColor = '緑';
-                                else if (set.color.includes('青')) shortColor = '青';
-                                else if (set.color.includes('黄')) shortColor = '黄';
-                                else if (set.color.includes('桃') || set.color.includes('ピンク')) shortColor = '桃';
-                                else if (set.color.includes('虹')) shortColor = '虹';
-                                else if (set.color.includes('混')) shortColor = '混';
-                                else if (set.color.includes('白')) shortColor = '白';
-                                else if (set.color.includes('黒')) shortColor = '黒';
-                                else if (set.color.includes('紫')) shortColor = '紫';
-                                else if (set.color.includes('橙') || set.color.includes('オレンジ')) shortColor = '橙';
-                                else if (set.color.length > 0) shortColor = set.color.charAt(0);
-                                
-                                detailParts.push(`${shortColor}${set.weight}g`);
+                                detailParts.push(`${set.color}: ${set.weight}g×${set.quantity}`);
                             });
                             
                             weight = unitTotalWeight * quantity;
-                            productDetail = detailParts.join('');
-                        }
-                    } else {
-                        // 商品名から重量推定
-                        const weightMatch = itemName?.match(/(\d+)g/);
-                        if (weightMatch) {
-                            weight = parseInt(weightMatch[1]) * quantity;
-                            productDetail = `${weightMatch[1]}g`;
+                            productDetail = detailParts.join(', ');
+                        } else {
+                            // 商品名から重量推定（最後の手段）
+                            const weightMatch = itemName?.match(/(\d+)g/);
+                            if (weightMatch) {
+                                weight = parseInt(weightMatch[1]) * quantity;
+                            }
                         }
                     }
 
@@ -651,7 +963,7 @@
                 try {
                     const orderId = row['OrderId']?.trim();
                     let itemId = row['ItemId']?.trim();
-                    const subCode = row['SubCode']?.trim(); // SubCodeを取得
+                    const subCode = row['SubCode']?.trim() || ''; // SubCode追加
                     const title = row['Title']?.trim();
                     const quantityDetail = row['QuantityDetail']?.trim();
                     const shipName = row['ShipName']?.trim();
@@ -672,77 +984,20 @@
 
                     if (!shipName || !shipAddress || !shipZip || !shipPhone || !orderId) return;
 
-                    // SubCodeから商品情報を取得
+                    // 重量計算の新しいロジック
                     let totalWeight = 0;
                     let productDetails = [];
                     let totalQuantity = 0;
 
-                    if (subCode && subCode.includes('&')) {
-                        // 複数商品の場合（例: L1=greenmix60&L2=yellowgreen80）
-                        const items = subCode.split('&');
-                        items.forEach(item => {
-                            let cleanItemCode = '';
-                            if (item.includes('=')) {
-                                cleanItemCode = item.split('=')[1]; // = より後ろを取得
-                            } else {
-                                cleanItemCode = item.trim();
-                            }
-                            
-                            console.log(`Yahoo multiple item: ${item} -> ${cleanItemCode}`);
-                            
-                            // QuantityDetailから該当商品の数量を取得
-                            let quantity = 1;
-                            if (quantityDetail) {
-                                const quantityMatch = quantityDetail.match(new RegExp(`${cleanItemCode}:(\\d+)`));
-                                quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
-                            }
-                            
-                            // カラーマスタから情報取得
-                            if (colorMaster[cleanItemCode]) {
-                                const masterInfo = colorMaster[cleanItemCode];
-                                const itemTotalWeight = masterInfo.weight * quantity;
-                                totalWeight += itemTotalWeight;
-                                productDetails.push(`${masterInfo.shortColor}${masterInfo.weight}g`);
-                                totalQuantity += quantity;
-                            } else {
-                                console.log(`Product not found in color master: ${cleanItemCode}`);
-                                totalWeight += 50 * quantity;
-                                productDetails.push(`不明:${cleanItemCode}`);
-                                totalQuantity += quantity;
-                            }
-                        });
-                    } else if (subCode) {
-                        // 単一商品の場合
-                        const quantity = parseInt(quantityDetail) || 1;
+                    // 1. まずSubCodeからカラーオモリ対応表を検索
+                    if (subCode && colorWeightTable.byYahoo) {
+                        console.log(`Processing Yahoo SubCode: ${subCode}`);
                         
-                        let cleanItemCode = subCode;
-                        if (subCode.includes('=')) {
-                            cleanItemCode = subCode.split('=')[1]; // = より後ろを取得
-                        }
-                        
-                        console.log(`Yahoo single item: ${subCode} -> ${cleanItemCode}`);
-                        
-                        if (colorMaster[cleanItemCode]) {
-                            const masterInfo = colorMaster[cleanItemCode];
-                            totalWeight = masterInfo.weight * quantity;
-                            productDetails.push(`${masterInfo.shortColor}${masterInfo.weight}g`);
-                        } else {
-                            console.log(`Product not found in color master: ${cleanItemCode}`);
-                            // タイトルから重量推定
-                            const weightMatch = title?.match(/(\d+)g/);
-                            totalWeight = weightMatch ? parseInt(weightMatch[1]) * quantity : 50 * quantity;
-                            productDetails.push(`不明:${cleanItemCode}`);
-                        }
-                        totalQuantity = quantity;
-                    } else {
-                        // SubCodeが空の場合は従来のItemId処理
-                        const quantity = parseInt(quantityDetail) || 1;
-                        totalQuantity = quantity;
-                        
-                        if (itemId?.includes('&')) {
-                            // 複数商品の場合（例: L1=bara60&L2=bara80）
-                            const items = itemId.split('&');
+                        if (subCode.includes('&')) {
+                            // 複数商品の場合（例: L1=greenmix60&L2=yellowgreen80）
+                            const items = subCode.split('&');
                             items.forEach(item => {
+                                // L1=greenmix60 -> greenmix60 を抽出
                                 let cleanItemCode = '';
                                 if (item.includes('=')) {
                                     cleanItemCode = item.split('=')[1]; // = より後ろを取得
@@ -750,85 +1005,155 @@
                                     cleanItemCode = item.trim();
                                 }
                                 
+                                console.log(`Yahoo multiple SubCode item: ${item} -> ${cleanItemCode}`);
+                                
+                                // カラーオモリ対応表から検索
+                                if (colorWeightTable.byYahoo[cleanItemCode]) {
+                                    const colorInfo = colorWeightTable.byYahoo[cleanItemCode];
+                                    
+                                    // QuantityDetailから該当商品の数量を取得（例: greenmix60:2,yellowgreen80:1）
+                                    let quantity = 1;
+                                    if (quantityDetail) {
+                                        const quantityMatch = quantityDetail.match(new RegExp(`${cleanItemCode}:(\\d+)`));
+                                        quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                                    }
+                                    
+                                    const itemTotalWeight = colorInfo.weight * quantity;
+                                    totalWeight += itemTotalWeight;
+                                    productDetails.push(`${colorInfo.color}: ${colorInfo.weight}g×${quantity}`);
+                                    totalQuantity += quantity;
+                                    
+                                    console.log(`Yahoo SubCode match: ${cleanItemCode} -> ${colorInfo.color}: ${colorInfo.weight}g×${quantity}`);
+                                } else {
+                                    console.log(`Yahoo SubCode not found in table: ${cleanItemCode}`);
+                                    // 対応表にない場合のフォールバック
+                                    let quantity = 1;
+                                    if (quantityDetail) {
+                                        const quantityMatch = quantityDetail.match(new RegExp(`${cleanItemCode}:(\\d+)`));
+                                        quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                                    }
+                                    totalWeight += 50 * quantity;
+                                    productDetails.push(`不明商品: ${cleanItemCode}×${quantity}`);
+                                    totalQuantity += quantity;
+                                }
+                            });
+                        } else {
+                            // 単一商品の場合（例: L1=greenmix60）
+                            const quantity = parseInt(quantityDetail) || 1;
+                            
+                            // 単一商品でも = より後ろを取得
+                            let cleanItemCode = subCode;
+                            if (subCode.includes('=')) {
+                                cleanItemCode = subCode.split('=')[1]; // = より後ろを取得
+                            }
+                            
+                            console.log(`Yahoo single SubCode: ${subCode} -> ${cleanItemCode}`);
+                            
+                            if (colorWeightTable.byYahoo[cleanItemCode]) {
+                                const colorInfo = colorWeightTable.byYahoo[cleanItemCode];
+                                totalWeight = colorInfo.weight * quantity;
+                                productDetails.push(`${colorInfo.color}: ${colorInfo.weight}g×${quantity}`);
+                                console.log(`Yahoo SubCode match: ${cleanItemCode} -> ${colorInfo.color}: ${colorInfo.weight}g×${quantity}`);
+                            } else {
+                                console.log(`Yahoo SubCode not found in table: ${cleanItemCode}`);
+                                // 対応表にない場合のフォールバック
+                                totalWeight = 50 * quantity;
+                                productDetails.push(`不明商品: ${cleanItemCode}×${quantity}`);
+                            }
+                            totalQuantity = quantity;
+                        }
+                    }
+                    
+                    // 2. SubCodeがない場合、従来通りItemIdで商品マスタを確認
+                    if (totalWeight === 0) {
+                        console.log(`No SubCode or not found, using ItemId: ${itemId}`);
+                        
+                        if (itemId?.includes('&')) {
+                            // 複数商品の場合（例: L1=bara60&L2=bara80）
+                            const items = itemId.split('&');
+                            items.forEach(item => {
+                                // L1=bara60 -> bara60 を抽出
+                                let cleanItemCode = '';
+                                if (item.includes('=')) {
+                                    cleanItemCode = item.split('=')[1]; // = より後ろを取得
+                                } else {
+                                    cleanItemCode = item.trim();
+                                }
+                                
+                                console.log(`Yahoo multiple item: ${item} -> ${cleanItemCode}`);
+                                
+                                // QuantityDetailから該当商品の数量を取得（例: bara60:2,bara80:1）
+                                let quantity = 1;
+                                if (quantityDetail) {
+                                    const quantityMatch = quantityDetail.match(new RegExp(`${cleanItemCode}:(\\d+)`));
+                                    quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                                }
+                                
                                 const masterInfo = productMaster[cleanItemCode];
+                                console.log(`Searching for ${cleanItemCode}:`, masterInfo);
+                                
                                 if (masterInfo && masterInfo.colorSets) {
+                                    // 複数カラーセット対応
                                     let itemUnitWeight = 0;
                                     const itemDetailParts = [];
                                     
                                     masterInfo.colorSets.forEach(set => {
                                         itemUnitWeight += set.weight * set.quantity;
-                                        // 一文字色表示に変換
-                                        let shortColor = set.color;
-                                        if (set.color.includes('赤')) shortColor = '赤';
-                                        else if (set.color.includes('緑')) shortColor = '緑';
-                                        else if (set.color.includes('青')) shortColor = '青';
-                                        else if (set.color.includes('黄')) shortColor = '黄';
-                                        else if (set.color.includes('桃') || set.color.includes('ピンク')) shortColor = '桃';
-                                        else if (set.color.includes('虹')) shortColor = '虹';
-                                        else if (set.color.includes('混')) shortColor = '混';
-                                        else if (set.color.includes('白')) shortColor = '白';
-                                        else if (set.color.includes('黒')) shortColor = '黒';
-                                        else if (set.color.includes('紫')) shortColor = '紫';
-                                        else if (set.color.includes('橙') || set.color.includes('オレンジ')) shortColor = '橙';
-                                        else if (set.color.length > 0) shortColor = set.color.charAt(0);
-                                        
-                                        itemDetailParts.push(`${shortColor}${set.weight}g`);
+                                        itemDetailParts.push(`${set.color}: ${set.weight}g×${set.quantity}`);
                                     });
                                     
-                                    const itemTotalWeight = itemUnitWeight * (quantity / items.length);
+                                    const itemTotalWeight = itemUnitWeight * quantity;
                                     totalWeight += itemTotalWeight;
-                                    productDetails.push(itemDetailParts.join(''));
+                                    productDetails.push(itemDetailParts.join(', '));
+                                    totalQuantity += quantity;
                                 } else {
-                                    totalWeight += 50 * (quantity / items.length);
-                                    productDetails.push(`不明:${cleanItemCode}`);
+                                    console.log(`Product not found in master: ${cleanItemCode}`);
+                                    totalWeight += 50 * quantity;
+                                    productDetails.push(`不明商品: ${cleanItemCode}`);
+                                    totalQuantity += quantity;
                                 }
                             });
                         } else {
                             // 単一商品の場合（例: L1=bara60）
+                            const quantity = parseInt(quantityDetail) || 1;
+                            
+                            // 単一商品でも = より後ろを取得
                             let cleanItemCode = itemId;
                             if (itemId && itemId.includes('=')) {
                                 cleanItemCode = itemId.split('=')[1]; // = より後ろを取得
                             }
                             
+                            console.log(`Yahoo single item: ${itemId} -> ${cleanItemCode}`);
                             const masterInfo = productMaster[cleanItemCode];
+                            console.log(`Searching for ${cleanItemCode}:`, masterInfo);
+                            
                             if (masterInfo && masterInfo.colorSets) {
+                                // 複数カラーセット対応
                                 let unitTotalWeight = 0;
                                 const detailParts = [];
                                 
                                 masterInfo.colorSets.forEach(set => {
                                     unitTotalWeight += set.weight * set.quantity;
-                                    // 一文字色表示に変換
-                                    let shortColor = set.color;
-                                    if (set.color.includes('赤')) shortColor = '赤';
-                                    else if (set.color.includes('緑')) shortColor = '緑';
-                                    else if (set.color.includes('青')) shortColor = '青';
-                                    else if (set.color.includes('黄')) shortColor = '黄';
-                                    else if (set.color.includes('桃') || set.color.includes('ピンク')) shortColor = '桃';
-                                    else if (set.color.includes('虹')) shortColor = '虹';
-                                    else if (set.color.includes('混')) shortColor = '混';
-                                    else if (set.color.includes('白')) shortColor = '白';
-                                    else if (set.color.includes('黒')) shortColor = '黒';
-                                    else if (set.color.includes('紫')) shortColor = '紫';
-                                    else if (set.color.includes('橙') || set.color.includes('オレンジ')) shortColor = '橙';
-                                    else if (set.color.length > 0) shortColor = set.color.charAt(0);
-                                    
-                                    detailParts.push(`${shortColor}${set.weight}g`);
+                                    detailParts.push(`${set.color}: ${set.weight}g×${set.quantity}`);
                                 });
                                 
                                 totalWeight = unitTotalWeight * quantity;
-                                productDetails.push(detailParts.join(''));
+                                productDetails.push(detailParts.join(', '));
                             } else {
+                                console.log(`Product not found in master: ${cleanItemCode}`);
+                                // 商品マスタにない場合、タイトルから重量推定
                                 const weightMatch = title?.match(/(\d+)g/);
                                 totalWeight = weightMatch ? parseInt(weightMatch[1]) * quantity : 50 * quantity;
-                                productDetails.push(`不明:${cleanItemCode}`);
+                                productDetails.push(`不明商品: ${cleanItemCode}`);
                             }
+                            totalQuantity = quantity;
                         }
                     }
 
                     orders.push({
                         source: 'Yahoo',
                         sku: itemId,
-                        productName: productDetails.join(''),
+                        productName: productDetails.join(', '),
                         quantity: totalQuantity,
                         recipientName: shipName,
                         shipAddress: shipAddress,
@@ -858,7 +1183,7 @@
                     merged[key].orderId += `,${order.orderId}`;
                     
                     if (!merged[key].productName.includes(order.productName)) {
-                        merged[key].productName += `${order.productName}`;
+                        merged[key].productName += `, ${order.productName}`;
                     }
                 } else {
                     merged[key] = { ...order };
@@ -918,71 +1243,56 @@
             const today = new Date();
             const shipDate = `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
 
-            // 1kg超えの判定とソート（バージョン12対応）
-            const normalOrders = [];
-            const heavyOrders = [];
+            // 重量で分類（1kg以下と1kg超過）
+            const lightOrders = orders.filter(order => order.weight <= 1000);
+            const heavyOrders = orders.filter(order => order.weight > 1000);
             
-            orders.forEach(order => {
-                if (order.weight > 1000) {
-                    heavyOrders.push(order);
-                } else {
-                    normalOrders.push(order);
-                }
-            });
-            
-            // 通常の注文を先に、1kg超えを後に配置
-            const sortedOrders = [...normalOrders, ...heavyOrders];
+            // すべての注文を処理する関数
+            const processOrders = (orderList, shipType) => {
+                orderList.forEach(order => {
+                    const escapeCSV = (str) => {
+                        if (!str) return '';
+                        const strValue = String(str);
+                        if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+                            return '"' + strValue.replace(/"/g, '""') + '"';
+                        }
+                        return strValue;
+                    };
+                    
+                    const fullProductName = order.productName || '';
+                    const truncatedProductName = fullProductName.substring(0, 25); // 全角25文字制限
+                    const hasOverflow = fullProductName.length > 25;
+                    
+                    const row = [
+                        shipType, // 送り状種類：A（1kg以下）またはZ（1kg超過）
+                        shipDate,
+                        '', // お届け予定日
+                        '', // 配達時間帯
+                        escapeCSV(order.phoneNumber),
+                        escapeCSV(order.zipCode),
+                        escapeCSV(order.shipAddress),
+                        '', // アパートマンション名
+                        escapeCSV(order.recipientName),
+                        '050-3590-1444', // JGSフィッシュ電話番号
+                        '104-0061', // JGSフィッシュ郵便番号
+                        '東京都中央区銀座1-22-11 2F', // JGSフィッシュ住所
+                        'JGSフィッシュ', // JGSフィッシュ名
+                        escapeCSV(truncatedProductName), // 品名１（全角25文字制限）
+                        Math.round(order.weight || 50),
+                        hasOverflow ? escapeCSV(fullProductName) : '', // 品名詳細（オーバーフロー時は完全版）
+                        '', // 不明品名
+                        escapeCSV(order.orderId),
+                        '', ''
+                    ];
+                    rows.push(row.join(','));
+                });
+            };
 
-            sortedOrders.forEach(order => {
-                const escapeCSV = (str) => {
-                    if (!str) return '';
-                    const strValue = String(str);
-                    if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
-                        return '"' + strValue.replace(/"/g, '""') + '"';
-                    }
-                    return strValue;
-                };
-                
-                // 送り状種類の判定（バージョン12対応）
-                let shipType = 'A'; // バージョン10で7→A変更
-                if (order.weight > 1000) {
-                    shipType = 'Z'; // 1kg超えはZ表示
-                }
-                
-                // 商品名の処理（バージョン12対応）
-                const productName = order.productName || '';
-                let displayProductName = productName;
-                let detailProductName = '';
-                
-                // 25文字を超える場合の処理
-                if (productName.length > 25) {
-                    displayProductName = productName.substring(0, 25); // 25文字で切り詰め
-                    detailProductName = productName; // P列に完全な商品名を記載
-                }
-                
-                const row = [
-                    shipType, // 送り状種類（A または Z）
-                    shipDate,
-                    '', // お届け予定日
-                    '', // 配達時間帯
-                    escapeCSV(order.phoneNumber),
-                    escapeCSV(order.zipCode),
-                    escapeCSV(order.shipAddress),
-                    '', // アパートマンション名
-                    escapeCSV(order.recipientName),
-                    '050-3590-1444', // JGSフィッシュ電話番号
-                    '104-0061', // JGSフィッシュ郵便番号
-                    '東京都中央区銀座1-22-11 2F', // JGSフィッシュ住所
-                    'JGSフィッシュ', // JGSフィッシュ名
-                    escapeCSV(displayProductName), // 品名（25文字制限）
-                    Math.round(order.weight || 50),
-                    escapeCSV(detailProductName), // 品名詳細（P列）
-                    '', // 不明品名
-                    escapeCSV(order.orderId),
-                    '', ''
-                ];
-                rows.push(row.join(','));
-            });
+            // 1kg以下の注文を先に処理（送り状種類：A）
+            processOrders(lightOrders, 'A');
+            
+            // 1kg超過の注文を最下部に処理（送り状種類：Z）
+            processOrders(heavyOrders, 'Z');
 
             return rows.join('\r\n');
         }
@@ -1002,6 +1312,10 @@
         function showResult(csvContent, stats) {
             progressSection.style.display = 'none';
             resultSection.style.display = 'block';
+            
+            // 重量別の統計を計算
+            const lightCount = stats.lightOrders || 0;
+            const heavyCount = stats.heavyOrders || 0;
             
             messageArea.innerHTML = `
                 <div class="success-message">
@@ -1026,10 +1340,17 @@
                         <div class="stat-number">${stats.merged}</div>
                         <div class="stat-label">最終件数</div>
                     </div>
-                    ${stats.heavy > 0 ? `<div class="stat-box" style="background: #fff3cd; border-color: #ffeaa7;">
-                        <div class="stat-number" style="color: #856404;">${stats.heavy}</div>
-                        <div class="stat-label" style="color: #856404;">1kg超過(Z種別)</div>
-                    </div>` : ''}
+                </div>
+                
+                <div class="summary-stats">
+                    <div class="stat-box">
+                        <div class="stat-number">${lightCount}</div>
+                        <div class="stat-label">1kg以下 (A)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">${heavyCount}</div>
+                        <div class="stat-label">1kg超過 (Z)</div>
+                    </div>
                 </div>
             `;
             
@@ -1048,7 +1369,7 @@
                 const link = document.createElement('a');
                 const url = URL.createObjectURL(blob);
                 link.href = url;
-                link.download = `YBMdata_Ver12_${getCurrentDateString()}.csv`;
+                link.download = `YBMdata_${getCurrentDateString()}.csv`;
                 link.style.display = 'none';
                 
                 document.body.appendChild(link);
@@ -1085,8 +1406,7 @@
                     <small>確認項目：<br>
                     • 商品マスタファイルが正しく選択されているか<br>
                     • ファイル形式が正しいか（Amazon: TSV、楽天・Yahoo: CSV）<br>
-                    • ファイルが破損していないか<br>
-                    • カラーマスタシート（Sheet2）が存在するか</small>
+                    • ファイルが破損していないか</small>
                 </div>
             `;
             
@@ -1103,7 +1423,6 @@
             
             selectedFiles = { master: null, amazon: null, rakuten: null, yahoo: null };
             productMaster = {};
-            colorMaster = {};
             
             // ステータスをリセット
             const statusElements = [
@@ -1138,323 +1457,24 @@
             updateConvertButton();
         });
 
-        // 初期化
-        updateConvertButton();
+        // 初期化処理
+        async function initialize() {
+            console.log('Initializing application...');
+            
+            // カラーオモリ対応表を自動読み込み
+            const colorTableLoaded = await loadColorWeightTable();
+            
+            if (colorTableLoaded) {
+                console.log('✅ カラーオモリ対応表の読み込み完了');
+            } else {
+                console.log('⚠️ カラーオモリ対応表の読み込みに失敗（処理は継続）');
+            }
+            
+            updateConvertButton();
+        }
+
+        // 初期化実行
+        initialize();
     </script>
 </body>
 </html>
-        sheetName.includes('商品マスタ') || sheetName.includes('master') || sheetName.includes('Master')) {
-                        masterSheet = workbook.Sheets[sheetName];
-                        console.log('Found master sheet:', sheetName);
-                        break;
-                    }
-                }
-                
-                // カラーマスタシートを探す（新規）
-                let colorSheet = null;
-                for (const sheetName of workbook.SheetNames) {
-                    if (sheetName.includes('Sheet2') || sheetName.includes('カラー') || sheetName.includes('対応表')) {
-                        colorSheet = workbook.Sheets[sheetName];
-                        console.log('Found color sheet:', sheetName);
-                        break;
-                    }
-                }
-                
-                // 見つからない場合は最初のシートを使用
-                if (!masterSheet && workbook.SheetNames.length > 0) {
-                    masterSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    console.log('Using first sheet as master:', workbook.SheetNames[0]);
-                }
-                
-                if (!colorSheet && workbook.SheetNames.length > 1) {
-                    colorSheet = workbook.Sheets[workbook.SheetNames[1]];
-                    console.log('Using second sheet as color:', workbook.SheetNames[1]);
-                } else if (!colorSheet && workbook.SheetNames.length > 0) {
-                    colorSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    console.log('Using first sheet as color:', workbook.SheetNames[0]);
-                }
-                
-                let loadedCount = 0;
-                let colorLoadedCount = 0;
-                
-                // 従来の商品マスタ処理
-                if (masterSheet) {
-                    const jsonData = XLSX.utils.sheet_to_json(masterSheet, { 
-                        header: 1,
-                        defval: '',
-                        blankrows: false
-                    });
-                    
-                    console.log('Master data rows:', jsonData.length);
-                    console.log('Headers:', jsonData[0]);
-                    
-                    productMaster = {};
-                    
-                    for (let i = 1; i < jsonData.length; i++) {
-                        const row = jsonData[i];
-                        if (row.length >= 3 && row[0] && row[2] && row[0] !== 'FBA') {
-                            const site = String(row[0]).trim();
-                            const detail = String(row[1] || '').trim();
-                            const productNo = String(row[2]).trim();
-                            
-                            const colorSets = [];
-                            const columnGroups = [
-                                [3, 4, 5],   // D, E, F
-                                [6, 7, 8],   // G, H, I  
-                                [9, 10, 11], // J, K, L
-                                [12, 13, 14], // M, N, O
-                                [15, 16, 17]  // P, Q, R
-                            ];
-                            
-                            columnGroups.forEach(([weightCol, quantityCol, colorCol]) => {
-                                const weight = parseFloat(row[weightCol]) || 0;
-                                const quantity = parseInt(row[quantityCol]) || 0;
-                                const color = String(row[colorCol] || '').trim();
-                                
-                                if (weight > 0 && quantity > 0 && color) {
-                                    colorSets.push({
-                                        weight: weight,
-                                        quantity: quantity,
-                                        color: color
-                                    });
-                                }
-                            });
-                            
-                            if (colorSets.length > 0) {
-                                productMaster[productNo] = {
-                                    site: site,
-                                    detail: detail,
-                                    colorSets: colorSets
-                                };
-                                loadedCount++;
-                            }
-                        }
-                    }
-                }
-                
-                // カラーマスタ処理（新規）
-                if (colorSheet) {
-                    const colorData = XLSX.utils.sheet_to_json(colorSheet, { 
-                        header: 1,
-                        defval: '',
-                        blankrows: false
-                    });
-                    
-                    console.log('Color data rows:', colorData.length);
-                    console.log('Color headers:', colorData[0]);
-                    
-                    colorMaster = {};
-                    
-                    for (let i = 1; i < colorData.length; i++) {
-                        const row = colorData[i];
-                        if (row.length >= 5) {
-                            const yahooCode = String(row[1] || '').trim(); // Yahoo表記
-                            const rakutenCode = String(row[2] || '').trim(); // 楽天表記
-                            const color = String(row[3] || '').trim(); // 色
-                            const weightStr = String(row[4] || '').trim(); // 重さ
-                            
-                            // 重量を数値に変換
-                            const weightMatch = weightStr.match(/(\d+)/);
-                            const weight = weightMatch ? parseInt(weightMatch[1]) : 0;
-                            
-                            // 一文字色表示（バージョン12対応）
-                            let shortColor = color;
-                            if (color.includes('赤')) shortColor = '赤';
-                            else if (color.includes('緑')) shortColor = '緑';
-                            else if (color.includes('青')) shortColor = '青';
-                            else if (color.includes('黄')) shortColor = '黄';
-                            else if (color.includes('桃') || color.includes('ピンク')) shortColor = '桃';
-                            else if (color.includes('虹')) shortColor = '虹';
-                            else if (color.includes('混')) shortColor = '混';
-                            else if (color.includes('白')) shortColor = '白';
-                            else if (color.includes('黒')) shortColor = '黒';
-                            else if (color.includes('紫')) shortColor = '紫';
-                            else if (color.includes('橙') || color.includes('オレンジ')) shortColor = '橙';
-                            else if (color.length > 0) shortColor = color.charAt(0);
-                            
-                            // Yahoo表記での登録
-                            if (yahooCode && weight > 0) {
-                                colorMaster[yahooCode] = {
-                                    color: color,
-                                    shortColor: shortColor,
-                                    weight: weight,
-                                    source: 'yahoo'
-                                };
-                                colorLoadedCount++;
-                            }
-                            
-                            // 楽天表記での登録
-                            if (rakutenCode && weight > 0) {
-                                colorMaster[rakutenCode] = {
-                                    color: color,
-                                    shortColor: shortColor,
-                                    weight: weight,
-                                    source: 'rakuten'
-                                };
-                                colorLoadedCount++;
-                            }
-                        }
-                    }
-                }
-                
-                console.log(`Product master loaded: ${loadedCount} products`);
-                console.log(`Color master loaded: ${colorLoadedCount} items`);
-                
-                // ステータスを更新
-                const masterStatus = document.getElementById('masterStatus');
-                masterStatus.textContent = `✅ 商品マスタ読み込み完了: ${loadedCount}件、カラーマスタ: ${colorLoadedCount}件`;
-                masterStatus.className = 'file-status success';
-                
-            } catch (error) {
-                console.error('商品マスタ読み込みエラー:', error);
-                const masterStatus = document.getElementById('masterStatus');
-                masterStatus.textContent = `❌ 読み込みエラー: ${error.message}`;
-                masterStatus.className = 'file-status';
-                masterStatus.style.color = '#e53e3e';
-                productMaster = {};
-                colorMaster = {};
-            }
-        }
-
-        function updateConvertButton() {
-            // 商品マスタは必須、他のファイルは少なくとも1つは必要
-            const hasMaster = selectedFiles.master && (Object.keys(productMaster).length > 0 || Object.keys(colorMaster).length > 0);
-            const hasData = selectedFiles.amazon || selectedFiles.rakuten || selectedFiles.yahoo;
-            
-            convertButton.disabled = !hasMaster || !hasData;
-            
-            console.log('Button update:', { hasMaster, hasData, disabled: convertButton.disabled });
-        }
-
-        // 変換処理
-        convertButton.addEventListener('click', async () => {
-            try {
-                showProgress();
-                updateProgress(10, 'ファイルを読み込み中...');
-
-                const results = [];
-                
-                // Amazonデータ処理
-                if (selectedFiles.amazon) {
-                    updateProgress(25, 'Amazonデータを解析中...');
-                    const amazonData = await readFileWithEncoding(selectedFiles.amazon);
-                    const amazonOrders = await processAmazonData(amazonData);
-                    results.push(...amazonOrders);
-                }
-
-                // 楽天データ処理
-                if (selectedFiles.rakuten) {
-                    updateProgress(45, '楽天データを解析中...');
-                    const rakutenData = await readFileWithEncoding(selectedFiles.rakuten);
-                    const rakutenOrders = await processRakutenData(rakutenData);
-                    results.push(...rakutenOrders);
-                }
-
-                // Yahooデータ処理
-                if (selectedFiles.yahoo) {
-                    updateProgress(65, 'Yahooデータを解析中...');
-                    const yahooData = await readFileWithEncoding(selectedFiles.yahoo);
-                    const yahooOrders = await processYahooData(yahooData);
-                    results.push(...yahooOrders);
-                }
-
-                // データ統合
-                updateProgress(80, 'データを統合中...');
-                const mergedOrders = mergeOrdersByRecipient(results);
-                
-                updateProgress(90, 'CSV生成中...');
-                const csvContent = generateYamatoCSV(mergedOrders);
-                
-                updateProgress(100, '変換完了!');
-                
-                setTimeout(() => {
-                    showResult(csvContent, {
-                        original: results.length,
-                        merged: mergedOrders.length,
-                        amazon: results.filter(r => r.source === 'Amazon').length,
-                        rakuten: results.filter(r => r.source === '楽天').length,
-                        yahoo: results.filter(r => r.source === 'Yahoo').length,
-                        heavy: mergedOrders.filter(r => r.weight > 1000).length,
-                        unknownProducts: []
-                    });
-                }, 500);
-
-            } catch (error) {
-                console.error('変換エラー:', error);
-                showError(error.message);
-            }
-        });
-
-        async function readFileWithEncoding(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const buffer = new Uint8Array(e.target.result);
-                        
-                        // UTF-8で試行
-                        let result;
-                        try {
-                            result = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-                        } catch {
-                            // Shift-JISで試行
-                            try {
-                                result = new TextDecoder('shift-jis', { fatal: false }).decode(buffer);
-                            } catch {
-                                // 最後の手段：非厳密なUTF-8
-                                result = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
-                            }
-                        }
-                        
-                        resolve(result);
-                        
-                    } catch (error) {
-                        reject(error);
-                    }
-                };
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
-        async function processAmazonData(amazonData) {
-            const orders = [];
-            const lines = amazonData.split('\n').filter(line => line.trim());
-            
-            if (lines.length <= 1) return orders;
-            
-            const headers = lines[0].split('\t');
-            console.log('Amazon headers count:', headers.length);
-            
-            for (let i = 1; i < lines.length; i++) {
-                const fields = lines[i].split('\t');
-                if (fields.length < 20) continue; // 最低限のフィールド数チェック
-                
-                try {
-                    const sku = fields[11]?.trim();
-                    const productName = fields[13]?.trim();
-                    const quantity = parseInt(fields[14]) || 1;
-                    const recipientName = fields[19]?.trim();
-                    
-                    // Amazon住所の完全な結合: ship-state + ship-address-1 + ship-address-2 + ship-address-3
-                    const shipState = fields[24]?.trim() || '';
-                    const shipAddress1 = fields[20]?.trim() || '';
-                    const shipAddress2 = fields[21]?.trim() || '';
-                    const shipAddress3 = fields[22]?.trim() || '';
-                    const shipAddress = [shipState, shipAddress1, shipAddress2, shipAddress3]
-                        .filter(addr => addr && addr.trim())
-                        .join('');
-                    
-                    const zipCode = fields[25]?.trim();
-                    const phoneNumber = fields[10]?.trim();
-                    const orderId = fields[0]?.trim();
-                    const orderItemId = fields[1]?.trim();
-
-                    if (!recipientName || !shipAddress || !zipCode || !phoneNumber) continue;
-
-                    // 商品マスタから重量情報取得（複数カラーセット対応）
-                    const masterInfo = productMaster[sku];
-                    let weight = 50 * quantity; // デフォルト重量×注文数
-                    let productDetail = productName;
-
-                    if (
