@@ -74,8 +74,7 @@ csv-converter/
 ├── README.md
 ├── index.html
 ├── カラーオモリ対応表.xlsx
-└── docs/
-    └── manual.pdf
+└── manual.pdf
 ```
 
 ## 注意事項
