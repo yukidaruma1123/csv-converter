@@ -758,7 +758,7 @@
                     const orderId = fields[0]?.trim();
                     const orderItemId = fields[1]?.trim();
 
-                    if (!recipientName || !shipAddress || !zipCode || !phoneNumber) continue;
+                    if (!recipientName || !shipAddress || !zipCode) continue;
 
                     // 商品マスタから重量情報取得（複数カラーセット対応）
                     const masterInfo = productMaster[sku];
@@ -854,7 +854,7 @@
                         .filter(addr => addr && addr.trim())
                         .join('');
 
-                    if (!shipName || !fullAddress || !zipCode || !phoneNumber || !orderId) return;
+                    if (!shipName || !fullAddress || !zipCode || !orderId) return;
 
                     // 重量計算の新しいロジック
                     let weight = 50 * quantity; // デフォルト重量×注文数
@@ -966,7 +966,7 @@
                     const shipZip = row['ShipZipCode']?.toString().trim();
                     const shipPhone = formatPhoneNumber(row['ShipPhoneNumber']?.toString().trim());
 
-                    if (!shipName || !shipAddress || !shipZip || !shipPhone || !orderId) return;
+                    if (!shipName || !shipAddress || !shipZip || !orderId) return;
 
                     // 重量計算の新しいロジック
                     let totalWeight = 0;
