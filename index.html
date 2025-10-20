@@ -1455,30 +1455,7 @@
             // 分割候補位置を探す
             const candidates = [];
             
-            // 1. 建物名の直前で分割（最優先）
-            const buildingPatterns = [
-                /(ビル|マンション|ハイツ|コーポ|アパート|メゾン|レジデンス|ハイム|荘|館|棟|タワー|プラザ|パレス|シャトー|ヴィラ|ガーデン)/,
-                /([0-9０-９]+階)/,
-                /([0-9０-９]+号室?)/
-            ];
-            
-            buildingPatterns.forEach(pattern => {
-                const match = fullAddress.match(pattern);
-                if (match && match.index > 0) {
-                    const beforeBuilding = fullAddress.substring(0, match.index);
-                    const length = getFullWidthLength(beforeBuilding);
-                    if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
-                        candidates.push({
-                            position: match.index,
-                            length: length,
-                            priority: 1, // 最優先
-                            type: 'building'
-                        });
-                    }
-                }
-            });
-            
-            // 2. 番地の完全な区切り（数字のまとまりの後）
+            // 1. 番地の完全な区切り（数字のまとまりの後）- 最優先
             // 例: "1-2-3" の後、"123番地" の後
             const addressNumberPattern = /([0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)\s*/g;
             let match;
@@ -1490,13 +1467,13 @@
                     candidates.push({
                         position: endPos,
                         length: length,
-                        priority: 2,
+                        priority: 1, // 最優先
                         type: 'number'
                     });
                 }
             }
             
-            // 3. 町名・丁目の後
+            // 2. 町名・丁目の後
             const townPattern = /(町|丁目|条|区)\s*/g;
             while ((match = townPattern.exec(fullAddress)) !== null) {
                 const endPos = match.index + match[0].length;
@@ -1506,13 +1483,13 @@
                     candidates.push({
                         position: endPos,
                         length: length,
-                        priority: 3,
+                        priority: 2,
                         type: 'town'
                     });
                 }
             }
             
-            // 4. スペースの後
+            // 3. スペースの後
             const spacePattern = /\s+/g;
             while ((match = spacePattern.exec(fullAddress)) !== null) {
                 const endPos = match.index + match[0].length;
@@ -1522,11 +1499,35 @@
                     candidates.push({
                         position: endPos,
                         length: length,
-                        priority: 4,
+                        priority: 3,
                         type: 'space'
                     });
                 }
             }
+            
+            // 4. 建物名の直前で分割（優先度を下げる）
+            const buildingPatterns = [
+                /(ビル|マンション|ハイツ|コーポ|アパート|メゾン|レジデンス|ハイム|荘|館|棟|タワー|プラザ|パレス|シャトー|ヴィラ|ガーデン)/,
+                /([0-9０-９]+階)/,
+                /([0-9０-９]+号室?)/
+            ];
+            
+            buildingPatterns.forEach(pattern => {
+                const match = fullAddress.match(pattern);
+                if (match && match.index > 0) {
+                    const beforeBuilding = fullAddress.substring(0, match.index);
+                    const length = getFullWidthLength(beforeBuilding);
+                    // 建物名の前で区切るのは、他に良い候補がない場合のみ
+                    if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                        candidates.push({
+                            position: match.index,
+                            length: length,
+                            priority: 4, // 優先度を下げる
+                            type: 'building'
+                        });
+                    }
+                }
+            });
             
             // 最適な分割位置を選択
             let bestCandidate = null;
