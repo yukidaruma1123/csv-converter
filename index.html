@@ -1452,48 +1452,121 @@
                 return { address: fullAddress, apartment: '' };
             }
             
-            // 分割位置を探す（16文字目付近）
-            let bestSplit = 0;
-            let currentLength = 0;
-            let lastGoodSplit = 0;
+            // 分割候補位置を探す
+            const candidates = [];
             
-            for (let i = 0; i < fullAddress.length; i++) {
-                const char = fullAddress.charAt(i);
-                const charLength = char.match(/[^\x00-\x7F]/) ? 1 : 0.5;
-                currentLength += charLength;
-                
-                // 区切りに適した文字の後ろを記録
-                if (char.match(/[0-9０-９町丁目番地号\s\-－ー]/)) {
-                    lastGoodSplit = i + 1;
-                }
-                
-                // 16文字を超える直前の位置
-                if (currentLength >= MAX_ADDRESS_LENGTH) {
-                    // 適切な区切り位置があればそこで分割
-                    if (lastGoodSplit > 0 && lastGoodSplit < i) {
-                        bestSplit = lastGoodSplit;
-                    } else {
-                        bestSplit = i;
+            // 1. 建物名の直前で分割（最優先）
+            const buildingPatterns = [
+                /(ビル|マンション|ハイツ|コーポ|アパート|メゾン|レジデンス|ハイム|荘|館|棟|タワー|プラザ|パレス|シャトー|ヴィラ|ガーデン)/,
+                /([0-9０-９]+階)/,
+                /([0-9０-９]+号室?)/
+            ];
+            
+            buildingPatterns.forEach(pattern => {
+                const match = fullAddress.match(pattern);
+                if (match && match.index > 0) {
+                    const beforeBuilding = fullAddress.substring(0, match.index);
+                    const length = getFullWidthLength(beforeBuilding);
+                    if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                        candidates.push({
+                            position: match.index,
+                            length: length,
+                            priority: 1, // 最優先
+                            type: 'building'
+                        });
                     }
-                    break;
+                }
+            });
+            
+            // 2. 番地の完全な区切り（数字のまとまりの後）
+            // 例: "1-2-3" の後、"123番地" の後
+            const addressNumberPattern = /([0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)\s*/g;
+            let match;
+            while ((match = addressNumberPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeNumber = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeNumber);
+                if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 2,
+                        type: 'number'
+                    });
                 }
             }
             
-            // 建物名の直前で分割する試み
-            const buildingMatch = fullAddress.match(/(ビル|マンション|ハイツ|コーポ|アパート|荘|館|棟|階)/);
-            if (buildingMatch && buildingMatch.index > 0) {
-                const buildingStart = buildingMatch.index;
-                const lengthBeforeBuilding = getFullWidthLength(fullAddress.substring(0, buildingStart));
+            // 3. 町名・丁目の後
+            const townPattern = /(町|丁目|条|区)\s*/g;
+            while ((match = townPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeTown = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeTown);
+                if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 3,
+                        type: 'town'
+                    });
+                }
+            }
+            
+            // 4. スペースの後
+            const spacePattern = /\s+/g;
+            while ((match = spacePattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeSpace = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeSpace);
+                if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 4,
+                        type: 'space'
+                    });
+                }
+            }
+            
+            // 最適な分割位置を選択
+            let bestCandidate = null;
+            
+            if (candidates.length > 0) {
+                // 優先度順にソート、同じ優先度なら16文字に近いものを優先
+                candidates.sort((a, b) => {
+                    if (a.priority !== b.priority) {
+                        return a.priority - b.priority;
+                    }
+                    // 16文字により近い方を優先
+                    return Math.abs(MAX_ADDRESS_LENGTH - b.length) - Math.abs(MAX_ADDRESS_LENGTH - a.length);
+                });
                 
-                // 建物名の前が16文字以内なら、そこで分割
-                if (lengthBeforeBuilding <= MAX_ADDRESS_LENGTH && lengthBeforeBuilding > MAX_ADDRESS_LENGTH * 0.7) {
-                    bestSplit = buildingStart;
+                bestCandidate = candidates[0];
+            }
+            
+            // 候補が見つからない場合は、16文字目で強制分割
+            let splitPos = bestCandidate ? bestCandidate.position : 0;
+            
+            if (splitPos === 0) {
+                let currentLength = 0;
+                for (let i = 0; i < fullAddress.length; i++) {
+                    const char = fullAddress.charAt(i);
+                    const charLength = char.match(/[^\x00-\x7F]/) ? 1 : 0.5;
+                    currentLength += charLength;
+                    
+                    if (currentLength >= MAX_ADDRESS_LENGTH) {
+                        splitPos = i;
+                        break;
+                    }
                 }
             }
             
             // 分割位置で住所とアパート名に分ける
-            const address = fullAddress.substring(0, bestSplit).trim();
-            const apartment = fullAddress.substring(bestSplit).trim();
+            const address = fullAddress.substring(0, splitPos).trim();
+            const apartment = fullAddress.substring(splitPos).trim();
+            
+            console.log(`住所分割: "${fullAddress}" -> ["${address}"] + ["${apartment}"]`);
+            console.log(`  住所長: ${getFullWidthLength(address)}文字, アパート: ${getFullWidthLength(apartment)}文字`);
             
             return { address, apartment };
         }
