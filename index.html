@@ -332,6 +332,7 @@
                 <li>※ 同一配送先は自動統合されます</li>
                 <li>※ 重量は商品マスタから自動計算されます</li>
                 <li>※ カラーオモリ対応表を自動読み込みします</li>
+                <li>※ 住所が全角16文字を超える場合、自動的にアパート名欄に分割されます</li>
             </ul>
         </div>
     </div>
@@ -1424,6 +1425,79 @@
             return cleaned;
         }
 
+        // 住所を全角16文字で分割する関数
+        function splitAddress(fullAddress) {
+            if (!fullAddress) return { address: '', apartment: '' };
+            
+            const MAX_ADDRESS_LENGTH = 16; // 全角16文字まで
+            
+            // 全角換算での文字数を計算
+            function getFullWidthLength(str) {
+                let length = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charAt(i);
+                    // 全角文字（ひらがな、カタカナ、漢字、全角記号など）は1文字
+                    if (char.match(/[^\x00-\x7F]/)) {
+                        length += 1;
+                    } else {
+                        // 半角文字は0.5文字
+                        length += 0.5;
+                    }
+                }
+                return length;
+            }
+            
+            // 全角16文字以内ならそのまま返す
+            if (getFullWidthLength(fullAddress) <= MAX_ADDRESS_LENGTH) {
+                return { address: fullAddress, apartment: '' };
+            }
+            
+            // 分割位置を探す（16文字目付近）
+            let bestSplit = 0;
+            let currentLength = 0;
+            let lastGoodSplit = 0;
+            
+            for (let i = 0; i < fullAddress.length; i++) {
+                const char = fullAddress.charAt(i);
+                const charLength = char.match(/[^\x00-\x7F]/) ? 1 : 0.5;
+                currentLength += charLength;
+                
+                // 区切りに適した文字の後ろを記録
+                if (char.match(/[0-9０-９町丁目番地号\s\-－ー]/)) {
+                    lastGoodSplit = i + 1;
+                }
+                
+                // 16文字を超える直前の位置
+                if (currentLength >= MAX_ADDRESS_LENGTH) {
+                    // 適切な区切り位置があればそこで分割
+                    if (lastGoodSplit > 0 && lastGoodSplit < i) {
+                        bestSplit = lastGoodSplit;
+                    } else {
+                        bestSplit = i;
+                    }
+                    break;
+                }
+            }
+            
+            // 建物名の直前で分割する試み
+            const buildingMatch = fullAddress.match(/(ビル|マンション|ハイツ|コーポ|アパート|荘|館|棟|階)/);
+            if (buildingMatch && buildingMatch.index > 0) {
+                const buildingStart = buildingMatch.index;
+                const lengthBeforeBuilding = getFullWidthLength(fullAddress.substring(0, buildingStart));
+                
+                // 建物名の前が16文字以内なら、そこで分割
+                if (lengthBeforeBuilding <= MAX_ADDRESS_LENGTH && lengthBeforeBuilding > MAX_ADDRESS_LENGTH * 0.7) {
+                    bestSplit = buildingStart;
+                }
+            }
+            
+            // 分割位置で住所とアパート名に分ける
+            const address = fullAddress.substring(0, bestSplit).trim();
+            const apartment = fullAddress.substring(bestSplit).trim();
+            
+            return { address, apartment };
+        }
+
         function generateYamatoCSV(orders) {
             const headers = [
                 '送り状種類','出荷予定日','お届け予定日','配達時間帯','お届け先電話番号',
@@ -1479,6 +1553,9 @@
                     }
                     // 50バイトを超える場合はN列・P列ともに空欄
                     
+                    // 住所を分割（全角16文字制限対応）
+                    const { address, apartment } = splitAddress(order.shipAddress);
+                    
                     const row = [
                         shipType, // 送り状種類：A（1kg以下）またはZ（1kg超過）
                         shipDate,
@@ -1486,8 +1563,8 @@
                         '', // 配達時間帯
                         escapeCSV(order.phoneNumber),
                         escapeCSV(order.zipCode),
-                        escapeCSV(order.shipAddress),
-                        '', // アパートマンション名
+                        escapeCSV(address), // G列: 全角16文字以内の住所
+                        escapeCSV(apartment), // H列: 超過分のアパート名
                         escapeCSV(order.recipientName),
                         '050-3590-1444', // JGSフィッシュ電話番号
                         '104-0061', // JGSフィッシュ郵便番号
