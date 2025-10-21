@@ -1455,20 +1455,27 @@
             // 分割候補位置を探す
             const candidates = [];
             
-            // 1. 町名+番地の完全な形（最優先）
-            // 例: "さつき野西2-12-15" -> "さつき野西" の前で区切らず、番地全体の後で区切る
-            const townWithNumberPattern = /([ぁ-ん一-龥ァ-ヶー々]+[0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)\s*/g;
+            // 1. 町名の直後・番地の直前（最優先）
+            // 例: "さつき野西2-12-15" -> "さつき野西" + "2-12-15"
+            // 例: "下之宮町170-11" -> "下之宮町" + "170-11"
+            // 例: "朝霧南町4丁目14ー28" -> "朝霧南町4丁目" + "14ー28"
+            const townBeforeNumberPattern = /([ぁ-ん一-龥ァ-ヶー々町村]+[丁目]?)(?=[0-9０-９])/g;
             let match;
-            while ((match = townWithNumberPattern.exec(fullAddress)) !== null) {
+            while ((match = townBeforeNumberPattern.exec(fullAddress)) !== null) {
                 const endPos = match.index + match[0].length;
-                const beforePattern = fullAddress.substring(0, endPos);
-                const length = getFullWidthLength(beforePattern);
-                if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                const beforeNumber = fullAddress.substring(0, endPos);
+                const afterNumber = fullAddress.substring(endPos);
+                const length = getFullWidthLength(beforeNumber);
+                const afterLength = getFullWidthLength(afterNumber);
+                
+                // 町名部分が16文字以内で、かつ後ろが番地形式（数字で始まる）である場合
+                if (length > 0 && length <= MAX_ADDRESS_LENGTH && afterNumber.match(/^[0-9０-９]/)) {
                     candidates.push({
                         position: endPos,
                         length: length,
+                        afterLength: afterLength,
                         priority: 1, // 最優先
-                        type: 'town_with_number'
+                        type: 'town_before_number'
                     });
                 }
             }
@@ -1510,25 +1517,7 @@
                 }
             }
             
-            // 4. 数字の直前（町名の後）
-            // 例: "美原区" の後、"さつき野西" の前ではなく数字の前
-            const beforeNumberPattern = /([市区町村]|[ぁ-ん一-龥ァ-ヶー々]{2,})\s*(?=[0-9０-９])/g;
-            while ((match = beforeNumberPattern.exec(fullAddress)) !== null) {
-                const endPos = match.index + match[0].length;
-                const beforeTown = fullAddress.substring(0, endPos);
-                const length = getFullWidthLength(beforeTown);
-                // 14-16文字の範囲内のみ候補に
-                if (length >= MAX_ADDRESS_LENGTH - 2 && length <= MAX_ADDRESS_LENGTH) {
-                    candidates.push({
-                        position: endPos,
-                        length: length,
-                        priority: 4,
-                        type: 'before_number'
-                    });
-                }
-            }
-            
-            // 5. 番地の区切り（スペースなし）
+            // 4. 番地の区切り（スペースなし）
             const addressNumberPattern2 = /([0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)/g;
             while ((match = addressNumberPattern2.exec(fullAddress)) !== null) {
                 const endPos = match.index + match[0].length;
@@ -1539,13 +1528,13 @@
                     candidates.push({
                         position: endPos,
                         length: length,
-                        priority: 5,
+                        priority: 4,
                         type: 'number'
                     });
                 }
             }
             
-            // 6. 町名・丁目の後
+            // 5. 町名・丁目の後
             const townPattern = /(町|丁目|条)\s*/g;
             while ((match = townPattern.exec(fullAddress)) !== null) {
                 const endPos = match.index + match[0].length;
@@ -1556,13 +1545,13 @@
                     candidates.push({
                         position: endPos,
                         length: length,
-                        priority: 6,
+                        priority: 5,
                         type: 'town'
                     });
                 }
             }
             
-            // 7. スペースの後
+            // 6. スペースの後
             const spacePattern = /\s+/g;
             while ((match = spacePattern.exec(fullAddress)) !== null) {
                 const endPos = match.index + match[0].length;
@@ -1573,13 +1562,13 @@
                     candidates.push({
                         position: endPos,
                         length: length,
-                        priority: 7,
+                        priority: 6,
                         type: 'space'
                     });
                 }
             }
             
-            // 8. 建物名の直前（最低優先度）
+            // 7. 建物名の直前（最低優先度）
             const buildingPatterns = [
                 /(ビル|マンション|ハイツ|コーポ|アパート|メゾン|レジデンス|ハイム|荘|館|棟|タワー|プラザ|パレス|シャトー|ヴィラ|ガーデン)/,
                 /([0-9０-９]+階)/
@@ -1595,7 +1584,7 @@
                         candidates.push({
                             position: match.index,
                             length: length,
-                            priority: 8, // 最も低い優先度
+                            priority: 7, // 最も低い優先度
                             type: 'building'
                         });
                     }
