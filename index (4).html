@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV統合変換システム - ヤマト運輸データ作成</title>
+    <meta name="description" content="Amazon・楽天・Yahoo のCSVデータをヤマト運輸用CSVに変換するWebアプリケーション">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e1e5e9;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            color: #2d3748;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 16px;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .file-group {
+            margin-bottom: 20px;
+        }
+
+        .file-label {
+            display: block;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: block;
+            width: 100%;
+        }
+
+        .file-input {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            background: #f7fafc;
+            color: #4a5568;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .file-input:hover {
+            border-color: #007bff;
+            background: #edf2f7;
+        }
+
+        .file-input.has-file {
+            border-color: #28a745;
+            background: #f0fff4;
+            border-style: solid;
+        }
+
+        .file-status {
+            font-size: 12px;
+            margin-top: 4px;
+            color: #718096;
+        }
+
+        .file-status.success {
+            color: #28a745;
+        }
+
+        .convert-button {
+            width: 100%;
+            padding: 14px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-bottom: 20px;
+        }
+
+        .convert-button:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        .convert-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .progress-section {
+            display: none;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 8px;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .result-section {
+            display: none;
+        }
+
+        .success-message {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            color: #22543d;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .error-message {
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+            color: #742a2a;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .download-button {
+            width: 100%;
+            padding: 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .download-button:hover {
+            background: #218838;
+        }
+
+        .reset-button {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            color: #4a5568;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+
+        .reset-button:hover {
+            background: #f7fafc;
+        }
+
+        .info-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        .info-title {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+        }
+
+        .info-list {
+            color: #6c757d;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .info-list li {
+            margin-bottom: 4px;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .stat-box {
+            background: #f7fafc;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+
+        .stat-number {
+            font-size: 20px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 2px;
+        }
+
+        .required-label {
+            color: #e53e3e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CSV統合変換システム</h1>
+            <p>Amazon・楽天・Yahoo のデータをヤマト運輸用に変換</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="file-group">
+                <label class="file-label">商品マスタファイル <span class="required-label">*必須</span></label>
+                <input type="file" id="masterFile" class="file-input" accept=".xlsx,.xlsm,.xls">
+                <div class="file-status" id="masterStatus">商品マスタファイル(.xlsx/.xlsm)を選択してください</div>
+            </div>
+
+            <div class="file-group">
+                <label class="file-label">Amazonデータ (TSV形式)</label>
+                <input type="file" id="amazonFile" class="file-input" accept=".txt,.tsv,.csv">
+                <div class="file-status" id="amazonStatus">ファイルを選択してください</div>
+            </div>
+
+            <div class="file-group">
+                <label class="file-label">楽天データ (CSV形式)</label>
+                <input type="file" id="rakutenFile" class="file-input" accept=".csv">
+                <div class="file-status" id="rakutenStatus">ファイルを選択してください</div>
+            </div>
+
+            <div class="file-group">
+                <label class="file-label">Yahooデータ (CSV形式)</label>
+                <input type="file" id="yahooFile" class="file-input" accept=".csv">
+                <div class="file-status" id="yahooStatus">ファイルを選択してください</div>
+            </div>
+        </div>
+
+        <button class="convert-button" id="convertButton" disabled>
+            データを変換してダウンロード
+        </button>
+
+        <div class="progress-section" id="progressSection">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">処理中...</div>
+        </div>
+
+        <div class="result-section" id="resultSection">
+            <div id="messageArea"></div>
+            <button class="download-button" id="downloadButton" style="display: none;">
+                ヤマト運輸用CSVをダウンロード
+            </button>
+            <button class="reset-button" id="resetButton">
+                最初からやり直す
+            </button>
+        </div>
+
+        <div class="info-section">
+            <div class="info-title">使用方法</div>
+            <ul class="info-list">
+                <li>1. 商品マスタファイル(.xlsx/.xlsm)を選択</li>
+                <li>2. 各ECサイトのCSVファイルを選択</li>
+                <li>3. 「データを変換してダウンロード」をクリック</li>
+                <li>4. 変換完了後、ヤマト運輸用CSVをダウンロード</li>
+                <li>※ ファイル形式：Amazon(TSV)、楽天・Yahoo(CSV)</li>
+                <li>※ 同一配送先は自動統合されます</li>
+                <li>※ 重量は商品マスタから自動計算されます</li>
+                <li>※ カラーオモリ対応表を自動読み込みします</li>
+                <li>※ 住所が全角16文字を超える場合、自動的にアパート名欄に分割されます</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // グローバル変数
+        let productMaster = {};
+        let colorWeightTable = {}; // カラーオモリ対応表
+        let selectedFiles = {
+            master: null,
+            amazon: null,
+            rakuten: null,
+            yahoo: null
+        };
+
+        // DOM要素
+        const masterFile = document.getElementById('masterFile');
+        const amazonFile = document.getElementById('amazonFile');
+        const rakutenFile = document.getElementById('rakutenFile');
+        const yahooFile = document.getElementById('yahooFile');
+        const convertButton = document.getElementById('convertButton');
+        const progressSection = document.getElementById('progressSection');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const resultSection = document.getElementById('resultSection');
+        const messageArea = document.getElementById('messageArea');
+        const downloadButton = document.getElementById('downloadButton');
+        const resetButton = document.getElementById('resetButton');
+
+        // カラーオモリ対応表を自動読み込み
+        async function loadColorWeightTable() {
+            try {
+                console.log('Loading color weight table...');
+                const response = await fetch('./カラーオモリ対応表.xlsx');
+                if (!response.ok) {
+                    throw new Error(`カラーオモリ対応表の読み込みに失敗しました: ${response.status}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                
+                console.log('Color weight table sheets:', workbook.SheetNames);
+                
+                // 最初のシートを使用
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { 
+                    header: 1,
+                    defval: '',
+                    blankrows: false
+                });
+                
+                console.log('Color weight table rows:', jsonData.length);
+                console.log('Headers:', jsonData[0]);
+                
+                // カラーオモリ対応表オブジェクトを構築
+                // A列: 空、B列: Yahoo表記、C列: 楽天表記、D列: 色、E列: 重さ
+                colorWeightTable = {
+                    byYahoo: {},  // B列(Yahoo表記)でのマッピング
+                    byRakuten: {}, // C列(楽天表記)でのマッピング
+                    byColor: {}    // D列(色)でのマッピング（従来互換用）
+                };
+                let loadedCount = 0;
+                
+                for (let i = 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (row.length >= 5) {
+                        const yahooCode = String(row[1] || '').trim();     // B列: Yahoo表記
+                        const rakutenCode = String(row[2] || '').trim();   // C列: 楽天表記
+                        const colorName = String(row[3] || '').trim();     // D列: 色
+                        const weightStr = String(row[4] || '').trim();     // E列: 重さ("60g", "80g"形式)
+                        
+                        // 重さから数値を抽出
+                        const weightMatch = weightStr.match(/(\d+)/);
+                        const weight = weightMatch ? parseFloat(weightMatch[1]) : 0;
+                        
+                        if (weight > 0) {
+                            // 色を一文字に変換
+                            let shortColor = colorName;
+                            if (colorName.endsWith('色')) {
+                                shortColor = colorName.slice(0, -1); // 最後の「色」を除去
+                            }
+                            
+                            // Yahoo表記でのマッピング（B列）
+                            if (yahooCode) {
+                                colorWeightTable.byYahoo[yahooCode] = {
+                                    color: shortColor,
+                                    weight: weight
+                                };
+                                console.log(`Yahoo mapping: ${yahooCode} -> ${shortColor}: ${weight}g`);
+                            }
+                            
+                            // 楽天表記でのマッピング（C列）
+                            if (rakutenCode) {
+                                colorWeightTable.byRakuten[rakutenCode] = {
+                                    color: shortColor,
+                                    weight: weight
+                                };
+                                console.log(`Rakuten mapping: ${rakutenCode} -> ${shortColor}: ${weight}g`);
+                            }
+                            
+                            // カラー名でのマッピング（D列・従来互換用）
+                            if (colorName) {
+                                colorWeightTable.byColor[colorName] = weight;
+                            }
+                            
+                            loadedCount++;
+                        }
+                    }
+                }
+                
+                console.log(`Color weight table loaded: ${loadedCount} colors`);
+                console.log('Yahoo codes:', Object.keys(colorWeightTable.byYahoo));
+                console.log('Rakuten codes:', Object.keys(colorWeightTable.byRakuten));
+                return true;
+                
+            } catch (error) {
+                console.error('カラーオモリ対応表読み込みエラー:', error);
+                // エラーでも処理を継続（対応表なしでも動作するため）
+                return false;
+            }
+        }
+
+        // ファイル選択イベント
+        masterFile.addEventListener('change', (e) => handleFileSelect(e, 'master', 'masterStatus'));
+        amazonFile.addEventListener('change', (e) => handleFileSelect(e, 'amazon', 'amazonStatus'));
+        rakutenFile.addEventListener('change', (e) => handleFileSelect(e, 'rakuten', 'rakutenStatus'));
+        yahooFile.addEventListener('change', (e) => handleFileSelect(e, 'yahoo', 'yahooStatus'));
+
+        function handleFileSelect(event, type, statusId) {
+            const file = event.target.files[0];
+            const statusElement = document.getElementById(statusId);
+            const inputElement = event.target;
+
+            console.log(`File selected for ${type}:`, file ? file.name : 'none');
+
+            if (file) {
+                selectedFiles[type] = file;
+                statusElement.textContent = `選択済み: ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
+                statusElement.className = 'file-status success';
+                inputElement.classList.add('has-file');
+                
+                // 商品マスタファイルの場合は即座に読み込み
+                if (type === 'master') {
+                    loadProductMaster(file);
+                }
+            } else {
+                selectedFiles[type] = null;
+                statusElement.textContent = type === 'master' ? 
+                    '商品マスタファイル(.xlsx/.xlsm)を選択してください' : 
+                    'ファイルを選択してください';
+                statusElement.className = 'file-status';
+                inputElement.classList.remove('has-file');
+                
+                if (type === 'master') {
+                    productMaster = {};
+                }
+            }
+
+            updateConvertButton();
+        }
+
+        async function loadProductMaster(file) {
+            try {
+                console.log('Loading product master...');
+                const arrayBuffer = await file.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                
+                console.log('Workbook sheets:', workbook.SheetNames);
+                
+                let masterSheet = null;
+                // 商品マスタシートを探す
+                for (const sheetName of workbook.SheetNames) {
+                    if (sheetName.includes('商品マスタ') || sheetName.includes('master') || sheetName.includes('Master')) {
+                        masterSheet = workbook.Sheets[sheetName];
+                        console.log('Found master sheet:', sheetName);
+                        break;
+                    }
+                }
+                
+                // 見つからない場合は最初のシートを使用
+                if (!masterSheet && workbook.SheetNames.length > 0) {
+                    masterSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    console.log('Using first sheet:', workbook.SheetNames[0]);
+                }
+                
+                if (!masterSheet) {
+                    throw new Error('商品マスタシートが見つかりません');
+                }
+                
+                // シートをJSONに変換
+                const jsonData = XLSX.utils.sheet_to_json(masterSheet, { 
+                    header: 1,
+                    defval: '',
+                    blankrows: false
+                });
+                
+                console.log('Master data rows:', jsonData.length);
+                console.log('Headers:', jsonData[0]);
+                
+                // 商品マスタオブジェクトを構築（複数カラムセット対応）
+                productMaster = {};
+                let loadedCount = 0;
+                
+                for (let i = 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (row.length >= 3 && row[0] && row[2] && row[0] !== 'FBA') { // 販売サイト、商品No最低限必要、FBA除外
+                        const site = String(row[0]).trim();
+                        const detail = String(row[1] || '').trim();
+                        const productNo = String(row[2]).trim();
+                        
+                        // 複数カラムセットを処理（D-F, G-I, J-L, M-O, P-R）
+                        const colorSets = [];
+                        const columnGroups = [
+                            [3, 4, 5],   // D, E, F
+                            [6, 7, 8],   // G, H, I  
+                            [9, 10, 11], // J, K, L
+                            [12, 13, 14], // M, N, O
+                            [15, 16, 17]  // P, Q, R
+                        ];
+                        
+                        columnGroups.forEach(([weightCol, quantityCol, colorCol]) => {
+                            let weight = parseFloat(row[weightCol]) || 0;
+                            const quantity = parseInt(row[quantityCol]) || 0;
+                            const color = String(row[colorCol] || '').trim();
+                            
+                            // カラーオモリ対応表から重量を取得（優先）
+                            if (color && colorWeightTable.byColor && colorWeightTable.byColor[color]) {
+                                weight = colorWeightTable.byColor[color];
+                                console.log(`Using color weight table: ${color} = ${weight}g`);
+                            }
+                            
+                            if (weight > 0 && quantity > 0 && color) {
+                                colorSets.push({
+                                    weight: weight,
+                                    quantity: quantity,
+                                    color: color
+                                });
+                            }
+                        });
+                        
+                        // 少なくとも1つのカラーセットがある場合のみ登録
+                        if (colorSets.length > 0) {
+                            productMaster[productNo] = {
+                                site: site,
+                                detail: detail,
+                                colorSets: colorSets
+                            };
+                            loadedCount++;
+                        }
+                    }
+                }
+                
+                console.log(`Product master loaded: ${loadedCount} products`);
+                
+                // ステータスを更新
+                const masterStatus = document.getElementById('masterStatus');
+                masterStatus.textContent = `✅ 商品マスタ読み込み完了: ${loadedCount}件`;
+                masterStatus.className = 'file-status success';
+                
+            } catch (error) {
+                console.error('商品マスタ読み込みエラー:', error);
+                const masterStatus = document.getElementById('masterStatus');
+                masterStatus.textContent = `❌ 読み込みエラー: ${error.message}`;
+                masterStatus.className = 'file-status';
+                masterStatus.style.color = '#e53e3e';
+                productMaster = {};
+            }
+        }
+
+        function updateConvertButton() {
+            // 商品マスタは必須、他のファイルは少なくとも1つは必要
+            const hasMaster = selectedFiles.master && Object.keys(productMaster).length > 0;
+            const hasData = selectedFiles.amazon || selectedFiles.rakuten || selectedFiles.yahoo;
+            
+            convertButton.disabled = !hasMaster || !hasData;
+            
+            console.log('Button update:', { hasMaster, hasData, disabled: convertButton.disabled });
+        }
+
+        // 変換処理
+        convertButton.addEventListener('click', async () => {
+            try {
+                showProgress();
+                updateProgress(10, 'ファイルを読み込み中...');
+
+                const results = [];
+                
+                // Amazonデータ処理
+                if (selectedFiles.amazon) {
+                    updateProgress(25, 'Amazonデータを解析中...');
+                    const amazonData = await readFileWithEncoding(selectedFiles.amazon);
+                    const amazonOrders = await processAmazonData(amazonData);
+                    results.push(...amazonOrders);
+                }
+
+                // 楽天データ処理
+                if (selectedFiles.rakuten) {
+                    updateProgress(45, '楽天データを解析中...');
+                    const rakutenData = await readFileWithEncoding(selectedFiles.rakuten);
+                    const rakutenOrders = await processRakutenData(rakutenData);
+                    results.push(...rakutenOrders);
+                }
+
+                // Yahooデータ処理
+                if (selectedFiles.yahoo) {
+                    updateProgress(65, 'Yahooデータを解析中...');
+                    const yahooData = await readFileWithEncoding(selectedFiles.yahoo);
+                    const yahooOrders = await processYahooData(yahooData);
+                    results.push(...yahooOrders);
+                }
+
+                // データ統合
+                updateProgress(80, 'データを統合中...');
+                const mergedOrders = mergeOrdersByRecipient(results);
+                
+                updateProgress(90, 'CSV生成中...');
+                const csvContent = generateYamatoCSV(mergedOrders);
+                
+                updateProgress(100, '変換完了!');
+                
+                setTimeout(() => {
+                    // 重量別の統計を計算
+                    const lightOrders = mergedOrders.filter(order => order.weight <= 1000);
+                    const heavyOrders = mergedOrders.filter(order => order.weight > 1000);
+                    
+                    showResult(csvContent, {
+                        original: results.length,
+                        merged: mergedOrders.length,
+                        amazon: results.filter(r => r.source === 'Amazon').length,
+                        rakuten: results.filter(r => r.source === '楽天').length,
+                        yahoo: results.filter(r => r.source === 'Yahoo').length,
+                        lightOrders: lightOrders.length,
+                        heavyOrders: heavyOrders.length,
+                        unknownProducts: []
+                    });
+                }, 500);
+
+            } catch (error) {
+                console.error('変換エラー:', error);
+                showError(error.message);
+            }
+        });
+
+        async function readFileWithEncoding(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const buffer = new Uint8Array(e.target.result);
+                        
+                        // ファイル名で判定してエンコーディングを選択
+                        let result;
+                        if (file.name.includes('楽天') || file.name.includes('rakuten')) {
+                            // 楽天データはShift-JISを優先
+                            try {
+                                result = new TextDecoder('shift-jis', { fatal: false }).decode(buffer);
+                                console.log('Used Shift-JIS encoding for Rakuten data');
+                            } catch {
+                                // Shift-JISでダメならUTF-8を試行
+                                result = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+                                console.log('Fallback to UTF-8 for Rakuten data');
+                            }
+                        } else {
+                            // その他のファイルはUTF-8を優先
+                            try {
+                                result = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+                                console.log('Used UTF-8 encoding');
+                            } catch {
+                                // UTF-8でダメならShift-JISを試行
+                                try {
+                                    result = new TextDecoder('shift-jis', { fatal: false }).decode(buffer);
+                                    console.log('Fallback to Shift-JIS');
+                                } catch {
+                                    // 最後の手段：非厳密なUTF-8
+                                    result = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+                                    console.log('Used non-strict UTF-8 as last resort');
+                                }
+                            }
+                        }
+                        
+                        resolve(result);
+                        
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        async function processAmazonData(amazonData) {
+            const orders = [];
+            const lines = amazonData.split('\n').filter(line => line.trim());
+            
+            if (lines.length <= 1) return orders;
+            
+            const headers = lines[0].split('\t');
+            console.log('Amazon headers count:', headers.length);
+            
+            for (let i = 1; i < lines.length; i++) {
+                const fields = lines[i].split('\t');
+                if (fields.length < 20) continue; // 最低限のフィールド数チェック
+                
+                try {
+                    const sku = fields[11]?.trim();
+                    const productName = fields[13]?.trim();
+                    const quantity = parseInt(fields[14]) || 1;
+                    const recipientName = fields[19]?.trim();
+                    
+                    // Amazon住所の完全な結合: ship-state + ship-address-1 + ship-address-2 + ship-address-3
+                    const shipState = fields[24]?.trim() || '';
+                    const shipAddress1 = fields[20]?.trim() || '';
+                    const shipAddress2 = fields[21]?.trim() || '';
+                    const shipAddress3 = fields[22]?.trim() || '';
+                    const shipAddress = [shipState, shipAddress1, shipAddress2, shipAddress3]
+                        .filter(addr => addr && addr.trim())
+                        .join('');
+                    
+                    const zipCode = fields[25]?.trim();
+                    const phoneNumber = fields[10]?.trim();
+                    const orderId = fields[0]?.trim();
+                    const orderItemId = fields[1]?.trim();
+
+                    if (!recipientName || !shipAddress || !zipCode) continue;
+
+                    // 商品マスタから重量情報取得（複数カラーセット対応）
+                    const masterInfo = productMaster[sku];
+                    let weight = 50 * quantity; // デフォルト重量×注文数
+                    let productDetail = productName;
+
+                    if (masterInfo && masterInfo.colorSets) {
+                        // 総重量計算: 各カラーセットの(重さ×個数)を合計してから注文数を掛ける
+                        let unitTotalWeight = 0;
+                        const detailParts = [];
+                        
+                        masterInfo.colorSets.forEach(set => {
+                            unitTotalWeight += set.weight * set.quantity;
+                            detailParts.push(`${set.color}: ${set.weight}g×${set.quantity * quantity}`);
+                        });
+                        
+                        weight = unitTotalWeight * quantity;
+                        productDetail = detailParts.join(', ');
+                    } else {
+                        // 商品名から重量を推定
+                        const weightMatch = productName?.match(/(\d+)g/);
+                        if (weightMatch) {
+                            weight = parseInt(weightMatch[1]) * quantity;
+                        }
+                    }
+
+                    orders.push({
+                        source: 'Amazon',
+                        sku: sku,
+                        productName: productDetail,
+                        quantity: quantity,
+                        recipientName: recipientName,
+                        shipAddress: shipAddress,
+                        zipCode: formatZipCode(zipCode),
+                        phoneNumber: formatPhoneNumber(phoneNumber),
+                        weight: weight,
+                        orderId: `${orderId}:${orderItemId}:${quantity}`
+                    });
+                } catch (error) {
+                    console.error(`Amazon row ${i} error:`, error);
+                }
+            }
+            
+            console.log('Amazon orders processed:', orders.length);
+            return orders;
+        }
+
+        async function processRakutenData(rakutenData) {
+            const orders = [];
+            
+            const parsed = Papa.parse(rakutenData, { 
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false
+            });
+            
+            if (!parsed.data || parsed.data.length === 0) return orders;
+            
+            console.log('Rakuten headers:', Object.keys(parsed.data[0]));
+            
+            parsed.data.forEach((row, index) => {
+                try {
+                    const orderId = row['注文番号']?.trim();
+                    const itemId = row['商品管理番号']?.trim();
+                    const itemName = row['商品名']?.trim();
+                    const quantity = parseInt(row['個数']) || 1;
+                    const skuInfo = row['SKU情報']?.trim() || ''; // FB列のSKU情報
+                    
+                    const shipLastName = row['送付先姓']?.trim() || '';
+                    const shipFirstName = row['送付先名']?.trim() || '';
+                    const shipName = `${shipLastName} ${shipFirstName}`.trim();
+                    
+                    const shipPhone1 = row['送付先電話番号1']?.trim() || '';
+                    const shipPhone2 = row['送付先電話番号2']?.trim() || '';
+                    const shipPhone3 = row['送付先電話番号3']?.trim() || '';
+                    const phoneNumber = formatPhoneNumber(`${shipPhone1}-${shipPhone2}-${shipPhone3}`);
+                    
+                    const shipZip1 = row['送付先郵便番号1']?.toString().trim() || '';
+                    const shipZip2 = row['送付先郵便番号2']?.toString().trim() || '';
+                    
+                    // 楽天郵便番号: AJ列を3桁、AK列を4桁に0埋め
+                    const paddedZip1 = shipZip1.padStart(3, '0');
+                    const paddedZip2 = shipZip2.padStart(4, '0');
+                    const zipCode = formatZipCode(`${paddedZip1}${paddedZip2}`);
+                    
+                    const shipPref = row['送付先住所都道府県']?.trim() || '';
+                    const shipCity = row['送付先住所郡市区']?.trim() || '';
+                    const shipAddr = row['送付先住所それ以降の住所']?.trim() || '';
+                    const shipApart = row['送付先住所アパートマンション名']?.trim() || '';
+                    
+                    // 楽天住所の完全な結合
+                    const fullAddress = [shipPref, shipCity, shipAddr, shipApart]
+                        .filter(addr => addr && addr.trim())
+                        .join('');
+
+                    if (!shipName || !fullAddress || !zipCode || !orderId) return;
+
+                    // 重量計算の新しいロジック
+                    let weight = 50 * quantity; // デフォルト重量×注文数
+                    let productDetail = itemName;
+                    let foundInColorTable = false;
+
+                    // 1. まずSKU情報（FB列）からカラーオモリ対応表を検索
+                    if (skuInfo && colorWeightTable.byRakuten) {
+                        // SKU情報から"カラー:"プレフィックスを除去
+                        let cleanSKU = skuInfo;
+                        if (skuInfo.startsWith('カラー:')) {
+                            cleanSKU = skuInfo.substring(4); // "カラー:"を除去（4文字）
+                        }
+                        
+                        console.log(`Rakuten SKU processing: "${skuInfo}" -> "${cleanSKU}"`);
+                        
+                        // cleanSKUが実質的に商品コードを含んでいるかチェック
+                        if (cleanSKU && cleanSKU.trim() && colorWeightTable.byRakuten[cleanSKU]) {
+                            const colorInfo = colorWeightTable.byRakuten[cleanSKU];
+                            weight = colorInfo.weight * quantity;
+                            productDetail = `${colorInfo.color}: ${colorInfo.weight}g×${quantity}`;
+                            foundInColorTable = true;
+                            console.log(`Rakuten SKU match: ${cleanSKU} -> ${colorInfo.color}: ${colorInfo.weight}g`);
+                        } else {
+                            console.log(`Rakuten SKU not found in table or empty: "${cleanSKU}"`);
+                        }
+                    }
+                    
+                    // 2. SKU情報で見つからない場合、商品管理番号で商品マスタを確認
+                    if (!foundInColorTable) {
+                        console.log(`Using itemId for Rakuten: ${itemId}`);
+                        const masterInfo = productMaster[itemId];
+                        if (masterInfo && masterInfo.colorSets) {
+                            // 複数カラーセット対応
+                            let unitTotalWeight = 0;
+                            const detailParts = [];
+                            
+                            masterInfo.colorSets.forEach(set => {
+                                unitTotalWeight += set.weight * set.quantity;
+                                detailParts.push(`${set.color}: ${set.weight}g×${set.quantity * quantity}`);
+                            });
+                            
+                            weight = unitTotalWeight * quantity;
+                            productDetail = detailParts.join(', ');
+                        } else {
+                            console.log(`Product not found in master: ${itemId}`);
+                            // 商品名から重量推定（最後の手段）
+                            const weightMatch = itemName?.match(/(\d+)g/);
+                            if (weightMatch) {
+                                weight = parseInt(weightMatch[1]) * quantity;
+                            }
+                        }
+                    }
+
+                    orders.push({
+                        source: '楽天',
+                        sku: itemId,
+                        productName: productDetail,
+                        quantity: quantity,
+                        recipientName: shipName,
+                        shipAddress: fullAddress,
+                        zipCode: zipCode,
+                        phoneNumber: phoneNumber,
+                        weight: weight,
+                        orderId: orderId
+                    });
+                } catch (error) {
+                    console.error(`Rakuten row ${index} error:`, error);
+                }
+            });
+            
+            console.log('Rakuten orders processed:', orders.length);
+            return orders;
+        }
+
+        async function processYahooData(yahooData) {
+            const orders = [];
+            
+            const parsed = Papa.parse(yahooData, { 
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false
+            });
+            
+            if (!parsed.data || parsed.data.length === 0) return orders;
+            
+            console.log('Yahoo headers:', Object.keys(parsed.data[0]));
+            
+            parsed.data.forEach((row, index) => {
+                try {
+                    const orderId = row['OrderId']?.trim();
+                    let itemId = row['ItemId']?.trim();
+                    const subCode = row['SubCode']?.trim() || ''; // SubCode追加
+                    const title = row['Title']?.trim();
+                    const quantityDetail = row['QuantityDetail']?.trim();
+                    const shipName = row['ShipName']?.trim();
+                    const shipAddress1 = row['ShipAddress1']?.trim() || '';
+                    const shipAddress2 = row['ShipAddress2']?.trim() || '';
+                    const shipCity = row['ShipCity']?.trim() || '';
+                    const shipPrefecture = row['ShipPrefecture']?.trim() || '';
+                    const shipAddressFull = row['ShipAddressFull']?.trim() || '';
+                    
+                    // Yahoo住所: ShipAddressFullを優先、なければ個別フィールドを結合
+                    const shipAddress = shipAddressFull || 
+                        [shipPrefecture, shipCity, shipAddress1, shipAddress2]
+                            .filter(addr => addr && addr.trim())
+                            .join('');
+                    
+                    const shipZip = row['ShipZipCode']?.toString().trim();
+                    const shipPhone = formatPhoneNumber(row['ShipPhoneNumber']?.toString().trim());
+
+                    if (!shipName || !shipAddress || !shipZip || !orderId) return;
+
+                    // 重量計算の新しいロジック
+                    let totalWeight = 0;
+                    let productDetails = [];
+                    let totalQuantity = 0;
+                    
+                    // 処理済みアイテムを追跡（L1, L2など）
+                    const processedItems = new Set();
+                    const allProducts = []; // 全商品を収集
+
+                    // 1. まずSubCodeからカラーオモリ対応表を検索
+                    if (subCode && colorWeightTable.byYahoo) {
+                        console.log(`Processing Yahoo SubCode: ${subCode}`);
+                        
+                        if (subCode.includes('&')) {
+                            // 複数商品の場合（例: L1=&L2=greenmix60）
+                            const items = subCode.split('&');
+                            items.forEach(item => {
+                                // L1=greenmix60 -> greenmix60 を抽出
+                                let cleanItemCode = '';
+                                const itemIndexMatch = item.match(/^(L\d+)=/);
+                                const itemIndex = itemIndexMatch ? itemIndexMatch[1] : '';
+                                
+                                if (item.includes('=')) {
+                                    cleanItemCode = item.split('=')[1]; // = より後ろを取得
+                                } else {
+                                    cleanItemCode = item.trim();
+                                }
+                                
+                                console.log(`Yahoo SubCode item: ${item} -> ${cleanItemCode} (index: ${itemIndex})`);
+                                
+                                // cleanItemCodeが実質的に商品コードを含んでいるかチェック
+                                if (cleanItemCode && cleanItemCode.trim() && colorWeightTable.byYahoo[cleanItemCode]) {
+                                    const colorInfo = colorWeightTable.byYahoo[cleanItemCode];
+                                    
+                                    // QuantityDetailから該当商品の数量を取得
+                                    let quantity = 1;
+                                    if (quantityDetail && itemIndex) {
+                                        const quantityPattern = new RegExp(`${itemIndex}\\s*=\\s*(\\d+)`);
+                                        const quantityMatch = quantityDetail.match(quantityPattern);
+                                        quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                                        console.log(`Quantity for ${itemIndex}: ${quantity}`);
+                                    }
+                                    
+                                    const itemTotalWeight = colorInfo.weight * quantity;
+                                    totalWeight += itemTotalWeight;
+                                    allProducts.push({
+                                        color: colorInfo.color,
+                                        weight: colorInfo.weight,
+                                        qty: quantity
+                                    });
+                                    totalQuantity += quantity;
+                                    
+                                    // 処理済みとしてマーク
+                                    if (itemIndex) processedItems.add(itemIndex);
+                                    
+                                    console.log(`Yahoo SubCode match: ${cleanItemCode} -> ${colorInfo.color}: ${colorInfo.weight}g×${quantity}`);
+                                } else {
+                                    console.log(`Yahoo SubCode not found in table or empty: ${cleanItemCode}`);
+                                }
+                            });
+                        } else {
+                            // 単一商品の場合（例: L1=greenmix60）
+                            const itemIndexMatch = subCode.match(/^(L\d+)=/);
+                            const itemIndex = itemIndexMatch ? itemIndexMatch[1] : '';
+                            
+                            let cleanItemCode = subCode;
+                            if (subCode.includes('=')) {
+                                cleanItemCode = subCode.split('=')[1]; // = より後ろを取得
+                            }
+                            
+                            console.log(`Yahoo single SubCode: ${subCode} -> ${cleanItemCode} (index: ${itemIndex})`);
+                            
+                            // QuantityDetailから数量を取得
+                            let quantity = 1;
+                            if (quantityDetail && itemIndex) {
+                                const quantityPattern = new RegExp(`${itemIndex}\\s*=\\s*(\\d+)`);
+                                const quantityMatch = quantityDetail.match(quantityPattern);
+                                quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                            }
+                            
+                            // cleanItemCodeが実質的に商品コードを含んでいるかチェック
+                            if (cleanItemCode && cleanItemCode.trim() && colorWeightTable.byYahoo[cleanItemCode]) {
+                                const colorInfo = colorWeightTable.byYahoo[cleanItemCode];
+                                totalWeight += colorInfo.weight * quantity;
+                                allProducts.push({
+                                    color: colorInfo.color,
+                                    weight: colorInfo.weight,
+                                    qty: quantity
+                                });
+                                totalQuantity = quantity;
+                                
+                                // 処理済みとしてマーク
+                                if (itemIndex) processedItems.add(itemIndex);
+                                
+                                console.log(`Yahoo SubCode match: ${cleanItemCode} -> ${colorInfo.color}: ${colorInfo.weight}g×${quantity}`);
+                            } else {
+                                console.log(`Yahoo SubCode not found in table or empty: ${cleanItemCode}`);
+                            }
+                        }
+                    }
+                    
+                    // 2. ItemIdで未処理分を補完処理
+                    if (itemId) {
+                        console.log(`Processing Yahoo ItemId: ${itemId}`);
+                        
+                        if (itemId.includes('&')) {
+                            // 複数商品の場合（例: L1=bara60&L2=bara80）
+                            const items = itemId.split('&');
+                            items.forEach(item => {
+                                // L1=bara60 -> bara60 を抽出
+                                let cleanItemCode = '';
+                                const itemIndexMatch = item.match(/^(L\d+)=/);
+                                const itemIndex = itemIndexMatch ? itemIndexMatch[1] : '';
+                                
+                                // 既に処理済みの場合はスキップ
+                                if (itemIndex && processedItems.has(itemIndex)) {
+                                    console.log(`Skipping already processed item: ${itemIndex}`);
+                                    return;
+                                }
+                                
+                                if (item.includes('=')) {
+                                    cleanItemCode = item.split('=')[1]; // = より後ろを取得
+                                } else {
+                                    cleanItemCode = item.trim();
+                                }
+                                
+                                console.log(`Yahoo ItemId item: ${item} -> ${cleanItemCode} (index: ${itemIndex})`);
+                                
+                                // QuantityDetailから該当商品の数量を取得
+                                let quantity = 1;
+                                if (quantityDetail && itemIndex) {
+                                    const quantityPattern = new RegExp(`${itemIndex}\\s*=\\s*(\\d+)`);
+                                    const quantityMatch = quantityDetail.match(quantityPattern);
+                                    quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                                    console.log(`Quantity for ${itemIndex}: ${quantity}`);
+                                }
+                                
+                                const masterInfo = productMaster[cleanItemCode];
+                                console.log(`Searching for ${cleanItemCode}:`, masterInfo);
+                                
+                                if (masterInfo && masterInfo.colorSets) {
+                                    // 複数カラーセット対応
+                                    masterInfo.colorSets.forEach(set => {
+                                        const itemTotalWeight = set.weight * set.quantity * quantity;
+                                        totalWeight += itemTotalWeight;
+                                        allProducts.push({
+                                            color: set.color,
+                                            weight: set.weight,
+                                            qty: set.quantity * quantity
+                                        });
+                                        totalQuantity += quantity;
+                                    });
+                                } else {
+                                    console.log(`Product not found in master: ${cleanItemCode}`);
+                                    totalWeight += 50 * quantity;
+                                    allProducts.push({
+                                        unknown: true,
+                                        text: `不明商品: ${cleanItemCode}`
+                                    });
+                                    totalQuantity += quantity;
+                                }
+                            });
+                        } else {
+                            // 単一商品の場合（例: L1=bara60）
+                            const itemIndexMatch = itemId.match(/^(L\d+)=/);
+                            const itemIndex = itemIndexMatch ? itemIndexMatch[1] : '';
+                            
+                            // 既に処理済みの場合はスキップ
+                            if (itemIndex && processedItems.has(itemIndex)) {
+                                console.log(`Skipping already processed single item: ${itemIndex}`);
+                            } else {
+                                let cleanItemCode = itemId;
+                                if (itemId && itemId.includes('=')) {
+                                    cleanItemCode = itemId.split('=')[1]; // = より後ろを取得
+                                }
+                                
+                                console.log(`Yahoo single ItemId: ${itemId} -> ${cleanItemCode} (index: ${itemIndex})`);
+                                
+                                // QuantityDetailから数量を取得
+                                let quantity = 1;
+                                if (quantityDetail && itemIndex) {
+                                    const quantityPattern = new RegExp(`${itemIndex}\\s*=\\s*(\\d+)`);
+                                    const quantityMatch = quantityDetail.match(quantityPattern);
+                                    quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+                                }
+                                
+                                const masterInfo = productMaster[cleanItemCode];
+                                console.log(`Searching for ${cleanItemCode}:`, masterInfo);
+                                
+                                if (masterInfo && masterInfo.colorSets) {
+                                    // 複数カラーセット対応
+                                    masterInfo.colorSets.forEach(set => {
+                                        const itemTotalWeight = set.weight * set.quantity * quantity;
+                                        totalWeight += itemTotalWeight;
+                                        allProducts.push({
+                                            color: set.color,
+                                            weight: set.weight,
+                                            qty: set.quantity * quantity
+                                        });
+                                        totalQuantity += quantity;
+                                    });
+                                } else {
+                                    console.log(`Product not found in master: ${cleanItemCode}`);
+                                    // 商品マスタにない場合、タイトルから重量推定
+                                    const weightMatch = title?.match(/(\d+)g/);
+                                    totalWeight += weightMatch ? parseInt(weightMatch[1]) * quantity : 50 * quantity;
+                                    allProducts.push({
+                                        unknown: true,
+                                        text: `不明商品: ${cleanItemCode}`
+                                    });
+                                    totalQuantity = quantity;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 3. 収集した全商品を統合処理
+                    const colorMap = {};
+                    const unknownItems = [];
+                    
+                    allProducts.forEach(product => {
+                        if (product.unknown) {
+                            unknownItems.push(product.text);
+                        } else {
+                            const key = `${product.color}:${product.weight}`;
+                            if (colorMap[key]) {
+                                colorMap[key].qty += product.qty;
+                            } else {
+                                colorMap[key] = {
+                                    color: product.color,
+                                    weight: product.weight,
+                                    qty: product.qty
+                                };
+                            }
+                        }
+                    });
+                    
+                    // 4. 色ごとにグループ化して表示形式に変換
+                    const colorGroups = {};
+                    Object.values(colorMap).forEach(item => {
+                        if (!colorGroups[item.color]) {
+                            colorGroups[item.color] = [];
+                        }
+                        colorGroups[item.color].push({
+                            weight: item.weight,
+                            qty: item.qty
+                        });
+                    });
+                    
+                    // 5. 色ごとに重量順ソートして色名省略を適用
+                    Object.keys(colorGroups).sort().forEach(color => {
+                        const items = colorGroups[color].sort((a, b) => a.weight - b.weight);
+                        items.forEach((item, index) => {
+                            if (index === 0) {
+                                productDetails.push(`${color}: ${item.weight}g×${item.qty}`);
+                            } else {
+                                productDetails.push(`${item.weight}g×${item.qty}`);
+                            }
+                        });
+                    });
+                    
+                    // 6. 不明商品を追加
+                    productDetails.push(...unknownItems);
+
+                    orders.push({
+                        source: 'Yahoo',
+                        sku: itemId,
+                        productName: productDetails.join(', '),
+                        quantity: totalQuantity,
+                        recipientName: shipName,
+                        shipAddress: shipAddress,
+                        zipCode: formatZipCode(shipZip),
+                        phoneNumber: shipPhone,
+                        weight: totalWeight,
+                        orderId: orderId
+                    });
+                } catch (error) {
+                    console.error(`Yahoo row ${index} error:`, error);
+                }
+            });
+            
+            console.log('Yahoo orders processed:', orders.length);
+            return orders;
+        }
+
+        function mergeOrdersByRecipient(orders) {
+            const merged = {};
+            
+            orders.forEach(order => {
+                const key = `${order.recipientName}_${order.shipAddress}_${order.phoneNumber}`;
+                
+                if (merged[key]) {
+                    // 重量と総数量を加算
+                    merged[key].weight += order.weight;
+                    merged[key].quantity += order.quantity;
+                    merged[key].orderId += `,${order.orderId}`;
+                    
+                    // 商品名の統合処理を改善
+                    // 既存と新規の全商品を一つのリストに統合
+                    const allProducts = [];
+                    
+                    // 既存商品を追加
+                    const existingProducts = merged[key].productName.split(', ');
+                    allProducts.push(...existingProducts);
+                    
+                    // 新商品を追加
+                    const newProducts = order.productName.split(', ');
+                    allProducts.push(...newProducts);
+                    
+                    // すべての商品を解析して統合
+                    const productMap = {};
+                    
+                    allProducts.forEach(product => {
+                        // まず標準パターンで解析
+                        const standardMatch = product.match(/^(.+?):\s*(\d+)g×(\d+)$/);
+                        if (standardMatch) {
+                            const [, color, weight, qty] = standardMatch;
+                            const key = `${color}:${weight}`;
+                            
+                            if (productMap[key]) {
+                                productMap[key].qty += parseInt(qty);
+                            } else {
+                                productMap[key] = {
+                                    color: color,
+                                    weight: parseInt(weight),
+                                    qty: parseInt(qty)
+                                };
+                            }
+                            return;
+                        }
+                        
+                        // 色名省略パターンをチェック
+                        const shortMatch = product.match(/^(\d+)g×(\d+)$/);
+                        if (shortMatch) {
+                            // 色名省略の場合、直前の色を推定する
+                            // より安全な方法：前のアイテムから色を継承するのではなく
+                            // 既存のproductMapから最も最近追加された色を取得
+                            const recentColors = Object.keys(productMap)
+                                .map(k => k.split(':')[0])
+                                .filter((v, i, a) => a.indexOf(v) === i); // 重複除去
+                            
+                            if (recentColors.length > 0) {
+                                // 最後に追加された色を使用
+                                const lastColor = recentColors[recentColors.length - 1];
+                                const [, weight, qty] = shortMatch;
+                                const key = `${lastColor}:${weight}`;
+                                
+                                if (productMap[key]) {
+                                    productMap[key].qty += parseInt(qty);
+                                } else {
+                                    productMap[key] = {
+                                        color: lastColor,
+                                        weight: parseInt(weight),
+                                        qty: parseInt(qty)
+                                    };
+                                }
+                                return;
+                            }
+                        }
+                        
+                        // どのパターンにもマッチしない場合は不明商品
+                        const unknownKey = `unknown:${product}`;
+                        if (!productMap[unknownKey]) {
+                            productMap[unknownKey] = {
+                                original: product,
+                                isUnknown: true
+                            };
+                        }
+                    });
+                    
+                    
+                    // 色ごとにグループ化して表示用に整理
+                    const colorGroups = {};
+                    const unknownProducts = [];
+                    
+                    Object.values(productMap).forEach(item => {
+                        if (item.isUnknown) {
+                            unknownProducts.push(item.original);
+                        } else {
+                            if (!colorGroups[item.color]) {
+                                colorGroups[item.color] = [];
+                            }
+                            colorGroups[item.color].push({
+                                weight: item.weight,
+                                qty: item.qty
+                            });
+                        }
+                    });
+                    
+                    
+                    // 最終的な商品名リストを作成
+                    const finalProducts = [];
+                    
+                    // 色ごとに重量順でソートし、2番目以降は色名を省略
+                    Object.keys(colorGroups).sort().forEach(color => {
+                        const items = colorGroups[color].sort((a, b) => a.weight - b.weight);
+                        items.forEach((item, index) => {
+                            if (index === 0) {
+                                // 最初のアイテムは色名付き
+                                finalProducts.push(`${color}: ${item.weight}g×${item.qty}`);
+                            } else {
+                                // 2番目以降は色名省略
+                                finalProducts.push(`${item.weight}g×${item.qty}`);
+                            }
+                        });
+                    });
+                    
+                    // 不明商品を最後に追加
+                    finalProducts.push(...unknownProducts);
+                    
+                    merged[key].productName = finalProducts.join(', ');
+                } else {
+                    merged[key] = { ...order };
+                }
+            });
+            
+            return Object.values(merged);
+        }
+
+        function formatPhoneNumber(phone) {
+            if (!phone) return '';
+            
+            const cleaned = phone.replace(/[^\d]/g, '');
+            const withZero = cleaned.startsWith('0') ? cleaned : '0' + cleaned;
+            
+            if (withZero.length === 10) {
+                return `${withZero.substr(0, 3)}-${withZero.substr(3, 3)}-${withZero.substr(6, 4)}`;
+            } else if (withZero.length === 11) {
+                return `${withZero.substr(0, 3)}-${withZero.substr(3, 4)}-${withZero.substr(7, 4)}`;
+            }
+            
+            return withZero;
+        }
+
+        function formatZipCode(zipCode) {
+            if (!zipCode) return '';
+            
+            const cleaned = zipCode.replace(/[^\d]/g, '');
+            
+            // 楽天の郵便番号修正処理
+            if (cleaned.length === 5) {
+                if (cleaned.startsWith('133') && cleaned.endsWith('55')) {
+                    return '133-0055';
+                }
+                if (cleaned.startsWith('590') && cleaned.endsWith('06')) {
+                    return '590-0006';
+                }
+            }
+            
+            if (cleaned.length === 7) {
+                return `${cleaned.substr(0, 3)}-${cleaned.substr(3, 4)}`;
+            }
+            
+            return cleaned;
+        }
+
+        // 住所を全角16文字で分割する関数
+        function splitAddress(fullAddress) {
+            if (!fullAddress) return { address: '', apartment: '' };
+            
+            const MAX_ADDRESS_LENGTH = 16; // 全角16文字まで
+            
+            // 全角換算での文字数を計算
+            function getFullWidthLength(str) {
+                let length = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charAt(i);
+                    // 全角文字（ひらがな、カタカナ、漢字、全角記号など）は1文字
+                    if (char.match(/[^\x00-\x7F]/)) {
+                        length += 1;
+                    } else {
+                        // 半角文字は0.5文字
+                        length += 0.5;
+                    }
+                }
+                return length;
+            }
+            
+            // 全角16文字以内ならそのまま返す
+            if (getFullWidthLength(fullAddress) <= MAX_ADDRESS_LENGTH) {
+                return { address: fullAddress, apartment: '' };
+            }
+            
+            // 分割候補位置を探す
+            const candidates = [];
+            
+            // 1. 町名+番地の完全な形（最優先）
+            // 例: "さつき野西2-12-15" -> "さつき野西" の前で区切らず、番地全体の後で区切る
+            const townWithNumberPattern = /([ぁ-ん一-龥ァ-ヶー々]+[0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)\s*/g;
+            let match;
+            while ((match = townWithNumberPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforePattern = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforePattern);
+                if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 1, // 最優先
+                        type: 'town_with_number'
+                    });
+                }
+            }
+            
+            // 2. 番地の完全な区切り（スペース付き）
+            // 例: "4-22-202 " の後
+            const addressNumberPattern = /([0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)\s+/g;
+            while ((match = addressNumberPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeNumber = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeNumber);
+                if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 2,
+                        type: 'number_with_space'
+                    });
+                }
+            }
+            
+            // 3. 「号」「階」「番地」などの後（完全な番地・部屋番号の終わり）
+            const unitPattern = /([0-9０-９]+)(号|階|番地|番|棟)/g;
+            while ((match = unitPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                // 次の文字が数字やハイフンでないことを確認（番地が続いていない）
+                const nextChar = fullAddress.charAt(endPos);
+                if (!nextChar.match(/[0-9０-９\-－ー]/)) {
+                    const beforeUnit = fullAddress.substring(0, endPos);
+                    const length = getFullWidthLength(beforeUnit);
+                    if (length > 0 && length <= MAX_ADDRESS_LENGTH) {
+                        candidates.push({
+                            position: endPos,
+                            length: length,
+                            priority: 3,
+                            type: 'unit_end'
+                        });
+                    }
+                }
+            }
+            
+            // 4. 数字の直前（町名の後）
+            // 例: "美原区" の後、"さつき野西" の前ではなく数字の前
+            const beforeNumberPattern = /([市区町村]|[ぁ-ん一-龥ァ-ヶー々]{2,})\s*(?=[0-9０-９])/g;
+            while ((match = beforeNumberPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeTown = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeTown);
+                // 14-16文字の範囲内のみ候補に
+                if (length >= MAX_ADDRESS_LENGTH - 2 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 4,
+                        type: 'before_number'
+                    });
+                }
+            }
+            
+            // 5. 番地の区切り（スペースなし）
+            const addressNumberPattern2 = /([0-9０-９]+[-－ー]+[0-9０-９]+[-－ー]*[0-9０-９]*)/g;
+            while ((match = addressNumberPattern2.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeNumber = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeNumber);
+                // 14-16文字の範囲内のみ候補に
+                if (length >= MAX_ADDRESS_LENGTH - 2 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 5,
+                        type: 'number'
+                    });
+                }
+            }
+            
+            // 6. 町名・丁目の後
+            const townPattern = /(町|丁目|条)\s*/g;
+            while ((match = townPattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeTown = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeTown);
+                // 14-16文字の範囲内のみ候補に
+                if (length >= MAX_ADDRESS_LENGTH - 2 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 6,
+                        type: 'town'
+                    });
+                }
+            }
+            
+            // 7. スペースの後
+            const spacePattern = /\s+/g;
+            while ((match = spacePattern.exec(fullAddress)) !== null) {
+                const endPos = match.index + match[0].length;
+                const beforeSpace = fullAddress.substring(0, endPos);
+                const length = getFullWidthLength(beforeSpace);
+                // 13-16文字の範囲内のみ候補に
+                if (length >= MAX_ADDRESS_LENGTH - 3 && length <= MAX_ADDRESS_LENGTH) {
+                    candidates.push({
+                        position: endPos,
+                        length: length,
+                        priority: 7,
+                        type: 'space'
+                    });
+                }
+            }
+            
+            // 8. 建物名の直前（最低優先度）
+            const buildingPatterns = [
+                /(ビル|マンション|ハイツ|コーポ|アパート|メゾン|レジデンス|ハイム|荘|館|棟|タワー|プラザ|パレス|シャトー|ヴィラ|ガーデン)/,
+                /([0-9０-９]+階)/
+            ];
+            
+            buildingPatterns.forEach(pattern => {
+                const match = fullAddress.match(pattern);
+                if (match && match.index > 0) {
+                    const beforeBuilding = fullAddress.substring(0, match.index);
+                    const length = getFullWidthLength(beforeBuilding);
+                    // 建物名の前は12-16文字の範囲でかつ、他の候補がない場合のみ
+                    if (length >= MAX_ADDRESS_LENGTH - 4 && length <= MAX_ADDRESS_LENGTH) {
+                        candidates.push({
+                            position: match.index,
+                            length: length,
+                            priority: 8, // 最も低い優先度
+                            type: 'building'
+                        });
+                    }
+                }
+            });
+            
+            // 最適な分割位置を選択
+            let bestCandidate = null;
+            
+            if (candidates.length > 0) {
+                // 優先度順にソート、同じ優先度なら16文字に近いものを優先
+                candidates.sort((a, b) => {
+                    if (a.priority !== b.priority) {
+                        return a.priority - b.priority;
+                    }
+                    // 16文字により近い方を優先
+                    return Math.abs(MAX_ADDRESS_LENGTH - b.length) - Math.abs(MAX_ADDRESS_LENGTH - a.length);
+                });
+                
+                bestCandidate = candidates[0];
+                console.log(`分割候補: ${candidates.length}個, 選択: ${bestCandidate.type} (優先度${bestCandidate.priority}, ${bestCandidate.length}文字)`);
+            }
+            
+            // 候補が見つからない場合は、16文字目で強制分割
+            let splitPos = bestCandidate ? bestCandidate.position : 0;
+            
+            if (splitPos === 0) {
+                let currentLength = 0;
+                for (let i = 0; i < fullAddress.length; i++) {
+                    const char = fullAddress.charAt(i);
+                    const charLength = char.match(/[^\x00-\x7F]/) ? 1 : 0.5;
+                    currentLength += charLength;
+                    
+                    if (currentLength >= MAX_ADDRESS_LENGTH) {
+                        splitPos = i;
+                        break;
+                    }
+                }
+                console.log(`分割候補なし、16文字目で強制分割`);
+            }
+            
+            // 分割位置で住所とアパート名に分ける
+            const address = fullAddress.substring(0, splitPos).trim();
+            const apartment = fullAddress.substring(splitPos).trim();
+            
+            console.log(`住所分割: "${fullAddress}"`);
+            console.log(`  → 住所[${getFullWidthLength(address)}文字]: "${address}"`);
+            console.log(`  → アパート[${getFullWidthLength(apartment)}文字]: "${apartment}"`);
+            
+            return { address, apartment };
+        }
+
+        function generateYamatoCSV(orders) {
+            const headers = [
+                '送り状種類','出荷予定日','お届け予定日','配達時間帯','お届け先電話番号',
+                'お届け先郵便番号','お届け先住所','お届け先アパートマンション名','お届け先名',
+                'ご依頼主電話番号','ご依頼主郵便番号','ご依頼主住所','ご依頼主名','品名１',
+                '総重量(g)','品名詳細','不明品名','販売ID','',''
+            ];
+
+            const rows = [headers.join(',')];
+            
+            const today = new Date();
+            const shipDate = `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
+
+            // 重量で分類（1kg以下と1kg超過）
+            const lightOrders = orders.filter(order => order.weight <= 1000);
+            const heavyOrders = orders.filter(order => order.weight > 1000);
+            
+            // すべての注文を処理する関数
+            const processOrders = (orderList, shipType) => {
+                orderList.forEach(order => {
+                    const escapeCSV = (str) => {
+                        if (!str) return '';
+                        const strValue = String(str);
+                        if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+                            return '"' + strValue.replace(/"/g, '""') + '"';
+                        }
+                        return strValue;
+                    };
+                    
+                    const fullProductName = order.productName || '';
+                    let displayProductName = '';
+                    let detailProductName = '';
+                    
+                    // 全角25文字分（50バイト）の制限チェック
+                    function getByteLength(str) {
+                        let byteLength = 0;
+                        for (let i = 0; i < str.length; i++) {
+                            const char = str.charAt(i);
+                            // 全角文字（ひらがな、カタカナ、漢字、全角記号など）は2バイト
+                            if (char.match(/[^\x00-\x7F]/)) {
+                                byteLength += 2;
+                            } else {
+                                // 半角文字は1バイト
+                                byteLength += 1;
+                            }
+                        }
+                        return byteLength;
+                    }
+                    
+                    // 全角25文字分（50バイト）以下の場合のみ表示、超える場合は空欄
+                    if (getByteLength(fullProductName) <= 50) {
+                        displayProductName = fullProductName;
+                    }
+                    // 50バイトを超える場合はN列・P列ともに空欄
+                    
+                    // 住所を分割（全角16文字制限対応）
+                    const { address, apartment } = splitAddress(order.shipAddress);
+                    
+                    const row = [
+                        shipType, // 送り状種類：A（1kg以下）またはZ（1kg超過）
+                        shipDate,
+                        '', // お届け予定日
+                        '', // 配達時間帯
+                        escapeCSV(order.phoneNumber),
+                        escapeCSV(order.zipCode),
+                        escapeCSV(address), // G列: 全角16文字以内の住所
+                        escapeCSV(apartment), // H列: 超過分のアパート名
+                        escapeCSV(order.recipientName),
+                        '050-3590-1444', // JGSフィッシュ電話番号
+                        '104-0061', // JGSフィッシュ郵便番号
+                        '東京都中央区銀座1-22-11 2F', // JGSフィッシュ住所
+                        order.source === 'Amazon' ? 'JGSフィッシュ (Amazon店)' :
+                        order.source === '楽天' ? 'JGSフィッシュ (楽天市場店)' :
+                        order.source === 'Yahoo' ? 'JGSフィッシュ (yahoo!ｼｮｯﾋﾟﾝｸﾞ店)' :
+                        'JGSフィッシュ', // ご依頼主名（ECサイト別）
+                        escapeCSV(displayProductName), // 品名１（25文字以下のみ表示、超える場合は空欄）
+                        Math.round(order.weight || 50),
+                        detailProductName, // 品名詳細（25文字超過時は空欄）
+                        '', // 不明品名
+                        escapeCSV(order.orderId),
+                        '', ''
+                    ];
+                    rows.push(row.join(','));
+                });
+            };
+
+            // 1kg以下の注文を先に処理（送り状種類：A）
+            processOrders(lightOrders, 'A');
+            
+            // 1kg超過の注文を最下部に処理（送り状種類：Z）
+            processOrders(heavyOrders, 'Z');
+
+            return rows.join('\r\n');
+        }
+
+        function showProgress() {
+            document.querySelector('.upload-section').style.display = 'none';
+            convertButton.style.display = 'none';
+            progressSection.style.display = 'block';
+            resultSection.style.display = 'none';
+        }
+
+        function updateProgress(percent, text) {
+            progressFill.style.width = percent + '%';
+            progressText.textContent = text;
+        }
+
+        function showResult(csvContent, stats) {
+            progressSection.style.display = 'none';
+            resultSection.style.display = 'block';
+            
+            // 重量別の統計を計算
+            const lightCount = stats.lightOrders || 0;
+            const heavyCount = stats.heavyOrders || 0;
+            
+            messageArea.innerHTML = `
+                <div class="success-message">
+                    <strong>変換完了</strong><br>
+                    1kg超過: ${heavyCount}件
+                </div>
+            `;
+            
+            downloadButton.style.display = 'block';
+            window.csvData = csvContent;
+            
+            downloadButton.onclick = () => downloadCSV(csvContent, stats.merged);
+        }
+
+        function downloadCSV(csvContent, recordCount) {
+            try {
+                const BOM = '\uFEFF';
+                const csvWithBOM = BOM + csvContent;
+                const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+                
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.href = url;
+                link.download = `YBMdata_${getCurrentDateString()}.csv`;
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                
+                downloadButton.textContent = '✅ ダウンロード完了！';
+                downloadButton.style.background = '#218838';
+                
+            } catch (error) {
+                console.error('ダウンロードエラー:', error);
+                alert('ダウンロードに失敗しました。ブラウザの設定を確認してください。');
+            }
+        }
+
+        function getCurrentDateString() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+            return `${year}${month}${day}`;
+        }
+
+        function showError(message) {
+            progressSection.style.display = 'none';
+            resultSection.style.display = 'block';
+            
+            messageArea.innerHTML = `
+                <div class="error-message">
+                    <strong>❌ エラーが発生しました</strong><br>
+                    ${message}<br><br>
+                    <small>確認項目：<br>
+                    • 商品マスタファイルが正しく選択されているか<br>
+                    • ファイル形式が正しいか（Amazon: TSV、楽天・Yahoo: CSV）<br>
+                    • ファイルが破損していないか</small>
+                </div>
+            `;
+            
+            downloadButton.style.display = 'none';
+        }
+
+        // リセット処理
+        resetButton.addEventListener('click', () => {
+            // ファイル選択をリセット
+            masterFile.value = '';
+            amazonFile.value = '';
+            rakutenFile.value = '';
+            yahooFile.value = '';
+            
+            selectedFiles = { master: null, amazon: null, rakuten: null, yahoo: null };
+            productMaster = {};
+            
+            // ステータスをリセット
+            const statusElements = [
+                { id: 'masterStatus', text: '商品マスタファイル(.xlsx/.xlsm)を選択してください' },
+                { id: 'amazonStatus', text: 'ファイルを選択してください' },
+                { id: 'rakutenStatus', text: 'ファイルを選択してください' },
+                { id: 'yahooStatus', text: 'ファイルを選択してください' }
+            ];
+            
+            statusElements.forEach(({ id, text }) => {
+                const element = document.getElementById(id);
+                element.textContent = text;
+                element.className = 'file-status';
+                element.style.color = '';
+            });
+            
+            // インプット要素のクラスをリセット
+            [masterFile, amazonFile, rakutenFile, yahooFile].forEach(input => {
+                input.classList.remove('has-file');
+            });
+            
+            // セクション表示をリセット
+            document.querySelector('.upload-section').style.display = 'block';
+            convertButton.style.display = 'block';
+            convertButton.textContent = 'データを変換してダウンロード';
+            progressSection.style.display = 'none';
+            resultSection.style.display = 'none';
+            
+            downloadButton.textContent = 'ヤマト運輸用CSVをダウンロード';
+            downloadButton.style.background = '#28a745';
+            
+            updateConvertButton();
+        });
+
+        // 初期化処理
+        async function initialize() {
+            console.log('Initializing application...');
+            
+            // カラーオモリ対応表を自動読み込み
+            const colorTableLoaded = await loadColorWeightTable();
+            
+            if (colorTableLoaded) {
+                console.log('✅ カラーオモリ対応表の読み込み完了');
+            } else {
+                console.log('⚠️ カラーオモリ対応表の読み込みに失敗（処理は継続）');
+            }
+            
+            updateConvertButton();
+        }
+
+        // 初期化実行
+        initialize();
+    </script>
+</body>
+</html>
